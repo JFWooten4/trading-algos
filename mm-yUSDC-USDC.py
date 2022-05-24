@@ -1,10 +1,8 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder, TrustLineFlags
-from datetime import datetime
-from decimal import Decimal
+import requests, json, time
 from pprint import pprint
-import requests, json
 
-BT_ISSUER = "GDRM3MK6KMHSYIT4E2AG2S2LWTDBJNYXE4H72C7YTTRWOWX5ZBECFWO7"
+BT_TREASURY = "GDRM3MK6KMHSYIT4E2AG2S2LWTDBJNYXE4H72C7YTTRWOWX5ZBECFWO7" # ...
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 
@@ -12,8 +10,8 @@ HORIZON_INST = "horizon.stellar.org"
 MAX_NUM_DECIMALS = "7"
 MAX_SEARCH = "200"
 
-FALLBACK_MIN_FEE = 100
-MAX_NUM_TXN_OPS = 100
+MIN_MEANINGFUL_POS = 690.42
+TXN_FEE_STROOPS = 5000
 
 SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
 
@@ -37,7 +35,7 @@ def main():
     
     # get list of bids down to .995
     
-    highestBidOver1KvolIn5stroopRangeMaxVal = .995;
+    highestMeaningfulBid = .995;
     
     for bidPrices, amounts in bidSide:
     
@@ -45,18 +43,11 @@ def main():
     
     # get lists of offers up to 1.42
     
-    lowestOfferOver1KvolIn5stroopRangeMinVal = 1.42;
-    roundAmount = 0
+    lowestMeaningfulOffer = 1.42;
+
     for offerPrices, amounts in askSide:
-      
-      if(offerPrices > minPriceFromRange + ".0000005"):
-        minPriceFromRange = offerPrices
-        roundAmount = 0
-      
-      roundAmount += float(amounts)
-      
-      
-      if(roundAmount > 690.42 && offerPrices < currSellSideAsk):
+
+      if(roundAmount > MIN_MEANINGFUL_POS && offerPrices < lowestOfferOver1KvolIn5stroopRangeMinVal):
         # logic to adjust sell offer
     
     
@@ -92,5 +83,5 @@ def main():
     
     
     
-    wait(3)
+    time.sleep(32)
 
