@@ -41,18 +41,15 @@ def main():
         yUSDCsellOutstanding = balances["selling_liabilities"]
         yUSDCavailable = str(Decimal(balances["balance"] - Decimal(USDCsellOutstanding)))
 
-    activeBuyOfferIDs = []
-    activeSellOfferIDs = []
-    
     requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
     data = requests.get(requestAddress).json()
     outstandingOffers = data["_embedded"]["records"]
     while(outstandingOffers != []):
       for offers in outstandingOffers:
         if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-          activeSellOfferIDs.append(offers["id"])
+          myAsk = offers["price"]
         elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          activeBuyOfferIDs.append(offers["id"])
+          myBid = Decimal(1) / Decimal(offers["price"])
       # Go to next cursor
       if(length(outstandingOffers) < 200):
         break:
@@ -60,20 +57,8 @@ def main():
       data = requests.get(requestAddress).json()
       outstandingOffers = data["_embedded"]["records"]
     
-    currBuySideBid = ...
-    currBuySideOfferID = ...
-    
-    if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-          activeSellOffers[offers["price"]] = offers["amount"]
-        elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          bidPrice = Decimal(1) / Decimal(offers["price"])
-          activeBuyOffers[str(bidPrice)] = offers["amount"]
-    
-    
-    requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH
-    
+    requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
     data = requests.get(requestAddress).json()
-    
     bidsFromStellar = data["bids"]
     asksFromStellar = data["asks"]
     
