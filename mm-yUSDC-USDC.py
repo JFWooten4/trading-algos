@@ -11,7 +11,7 @@ HORIZON_INST = "horizon.stellar.org"
 MAX_NUM_DECIMALS = "7"
 MAX_SEARCH = "200"
 
-MIN_MEANINGFUL_POS = 690.42
+MIN_MEANINGFUL_SIZE = 690.42
 TXN_FEE_STROOPS = 5000
 MIN_BID = .995
 MAX_OFFER = 1.42
@@ -44,82 +44,50 @@ def main():
     requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
     data = requests.get(requestAddress).json()
     outstandingOffers = data["_embedded"]["records"]
-    while(outstandingOffers != []):
-      for offers in outstandingOffers:
-        if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-          myAsk = offers["price"]
-        elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          myBid = Decimal(1) / Decimal(offers["price"])
-      # Go to next cursor
-      if(length(outstandingOffers) < 200):
-        break:
-      requestAddress = data["_links"]["next"]["href"].replace("\u0026", "&")
-      data = requests.get(requestAddress).json()
-      outstandingOffers = data["_embedded"]["records"]
+    for offers in outstandingOffers:
+      if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
+        myAsk = offers["price"]
+      elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
+        myBid = str(Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"])) # Always buying in terms of selling
     
     requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
     data = requests.get(requestAddress).json()
     bidsFromStellar = data["bids"]
     asksFromStellar = data["asks"]
     
+    highestMeaningfulBid = MIN_BID
     for bids in bidsFromStellar:
+      if(Decimal(bids["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(bids["price"]) > highestMeaningfulBid):
+        highestMeaningfulBid = Decimal(bids["price"])
     
-    
-    
-    
-    bidSide = {} # price, amount
-    askSide = {} # price, amount
-    
-    # get list of bids down to .995
-    
-    highestMeaningfulBid = MIN_BID;
-    
-    for bidPrices, amounts in bidSide:
-    
-    
-    
-    # get lists of offers up to 1.42
-    
-    lowestMeaningfulOffer = MAX_OFFER;
- 
-    for offerPrices, amounts in askSide:
- 
-      if(roundAmount > MIN_MEANINGFUL_POS && offerPrices < lowestOfferOver1KvolIn5stroopRangeMinVal):
-        # logic to adjust sell offer
-    
-    
+    lowestMeaningfulOffer = MAX_OFFER
+    for offers in asksFromStellar:
+      if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulOffer):
+        lowestMeaningfulOffer = Decimal(offers["price"])
+
+    # INIT COMPLETE...
+    # BEGIN TRADING LOGIC
+
+
+    # are we in buy mode or sell mode? 
+    print(USDCavailable)
+    print(USDCbuyOutstanding)
+    print(yUSDCavailable)
+    print(yUSDCsellOutstanding)
+    break
     
     # SEP-6 logic
     
-    if(highestBidOver1KvolIn5stroopRangeMaxVal >= 1 && USDCbuyOutstanding > 5):
+    # if(highestMeaningfulBid >= 1 and USDCavailable > 5):
       # go from USDC to yUSDC
+      # cancel outstaning buy order if any 
+      # convert 
+      
+    # if(lowestMeaningfulOffer <= 1 and yUSDCavailable > 5):
     
     
     
-    StellarBlockchainBalances = {}
-    requestAddress = "https://" + HORIZON_INST + "/accounts?asset=" + queryAsset + ":" + BT_ISSUER + "&limit=" + MAX_SEARCH
-    data = requests.get(requestAddress).json()
-    blockchainRecords = data["_embedded"]["records"]
-    while(blockchainRecords != []):
-      for accounts in blockchainRecords:
-        accountAddress = accounts["id"]
-        for balances in accounts["balances"]:
-          try:
-            if balances["asset_code"] == queryAsset and balances["asset_issuer"] == BT_ISSUER:
-              accountBalance = Decimal(balances["balance"])
-          except:
-            continue
-        StellarBlockchainBalances[accountAddress] = accountBalance
-      # Go to next cursor
-      requestAddress = data["_links"]["next"]["href"].replace("%3A", ":")
-      data = requests.get(requestAddress).json()
-      blockchainRecords = data["_embedded"]["records"]
-    return StellarBlockchainBalances
-    
-    
-    
-    
-    
+
     time.sleep(32)
 
 main()
