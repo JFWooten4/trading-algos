@@ -1,5 +1,5 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder, TrustLineFlags
-import requests, json, time
+import requests, json, time, math
 from pprint import pprint
 
 BT_TREASURY = "GDRM3MK6KMHSYIT4E2AG2S2LWTDBJNYXE4H72C7YTTRWOWX5ZBECFWO7" # ...
@@ -12,10 +12,17 @@ MAX_SEARCH = "200"
 
 MIN_MEANINGFUL_POS = 690.42
 TXN_FEE_STROOPS = 5000
+MIN_BID = .995
+MAX_OFFER = 1.42
 
 SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
 
 def main():
+  try:
+    SECRET = sys.argv[1]
+  except:
+    print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
+  print("Starting yUSDC-USDC market making algorithm from price range {} to {}".format(MIN_BID, MAX_OFFER))
   while(True):
     #init 
     USDCbuyOutstanding = ...
@@ -35,7 +42,7 @@ def main():
     
     # get list of bids down to .995
     
-    highestMeaningfulBid = .995;
+    highestMeaningfulBid = MIN_BID;
     
     for bidPrices, amounts in bidSide:
     
@@ -43,7 +50,7 @@ def main():
     
     # get lists of offers up to 1.42
     
-    lowestMeaningfulOffer = 1.42;
+    lowestMeaningfulOffer = MAX_OFFER;
 
     for offerPrices, amounts in askSide:
 
