@@ -4,7 +4,10 @@ from decimal import Decimal
 from pprint import pprint
 import requests, json
 
-BT_ISSUER = "GDRM3MK6KMHSYIT4E2AG2S2LWTDBJNYXE4H72C7YTTRWOWX5ZBECFWO7"
+BT_ISSUER
+
+#todo
+ = "GDRM3MK6KMHSYIT4E2AG2S2LWTDBJNYXE4H72C7YTTRWOWX5ZBECFWO7"
 
 def main():
   
