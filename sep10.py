@@ -98,8 +98,7 @@ class Sep10:
         )
         transaction = envelope_object.transaction
 
-# verify that transaction source account is equal to the server's signing key
-        print(transaction.source)
+        # verify that transaction source account is equal to the server's signing key
         if transaction.source.account_id != server_signing_key:
             raise InvalidSep10ChallengeError(
                 "Transaction source account is not equal to server's account."
