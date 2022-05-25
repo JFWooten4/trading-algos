@@ -29,6 +29,7 @@ def main():
   myAsk = Decimal(100)
   server = Server(horizon_url = "https://" + HORIZON_INST)
   treasury = server.load_account(account_id = BT_TREASURY)
+  source = Keypair.from_secret(SECRET)
   try:
     SECRET = sys.argv[1]
   except:
@@ -40,14 +41,17 @@ def main():
   authAddr = "https://ultrastellar.com/auth?account=" + BT_TREASURY
   response = requests.get(authAddr)
   txn = response.json()["transaction"]
-  response = requests.post(authAddr, json={"transaction": transaction.sign(treasury)})
+  # transaction.sign(source) $
+  response = requests.post(authAddr, json={"transaction": transaction.sign(source)})
   try:
     token = response.json()["token"]
   else: 
     print("UltraStellar authentication failed. Exiting now")
     return -1
+
   # Start algo
   while(True):
+    transaction = ""
     myBidID = myAskID = 0
     requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
     data = requests.get(requestAddress).json()
@@ -116,14 +120,25 @@ def main():
         response = requests.get(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
         # parse response.json()["how"]
         
+        transaction.append_payment_op( #
+          destination = ,
+          asset = USDCasset,
+          amount = ,
+        )
+        
       else:
         transaction.append_manage_sell_offer_op(
           selling = USDCasset,
           buying = yUSDCasset,
           amount = USDCtotal,
           price = highestMeaningfulBid + Decimal(MIN_INCREMENT),
-          offer_id = myBidID
+          offer_id = myBidID,
         )
+      
+      finally:
+        transaction.sign(source)
+        server.submit_transaction(transaction)
+        print("Buy offer set")
 
     elif(lowestMeaningfulOffer < myAsk):
       transaction = TransactionBuilder(
@@ -143,7 +158,7 @@ def main():
           buying = USDCasset,
           amount = yUSDCtotal,
           price = lowestMeaningfulOffer - Decimal(MIN_INCREMENT),
-          offer_id = myBidID
+          offer_id = myBidID,
         )
     
     time.sleep(32)
