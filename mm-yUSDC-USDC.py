@@ -26,7 +26,7 @@ USDCasset = Asset("USDC", USDC_ISSUER)
 
 def main():
   #getcontext().prec = 7
-  myBid = USDCbuyOutstanding = USDCavailable = yUSDCsellOutstanding = yUSDCavailable = Decimal(0)
+  myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = Decimal(0)
   myAsk = Decimal(100)
   try:
     SECRET = sys.argv[1]
@@ -37,26 +37,11 @@ def main():
   server = Server(horizon_url = "https://" + HORIZON_INST)
   treasury = server.load_account(account_id = BT_TREASURY)
   signing_keypair = Keypair.from_secret(SECRET)
-  # Establish ultrastellar session authentication
-#  authAddr = "https://ultrastellar.com/auth?account=" + BT_TREASURY
-#  response = requests.get(authAddr)
-#  transaction = response.json()["transaction"].to_xdr_object()
-#  transaction.sign(signing_keypair)
-#  pprint(transaction)
-#  response = requests.post(authAddr, json={"transaction": transaction})
-#  try:
-#    token = response.json()["token"]
-#  except: 
-#    print("UltraStellar authentication failed. Exiting now")
-#    return -1
-  print(signing_keypair)
   webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
-  print(webauth)
-  token = webauth.run_auth()
-  print(token)
+  token = webauth.run_auth() # Expires in a day
+  timeIn23hours = time.time() + 86400
   # Start algo
-  # while timeInUnix < exprTime -> recursive call to main
-  while(True):
+  while(time.time() < timeIn23hours):
     #time.sleep(32)
     transaction = ""
     myBidID = myAskID = 0
@@ -115,7 +100,7 @@ def main():
         network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
         base_fee = TXN_FEE_STROOPS,
       )
-      if(1): # if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+      if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
         print("Tries to do a SEP-6 buy")
         # cancel outstaning buy offer (then use total USDC)
         if(myBidID):
@@ -193,5 +178,5 @@ def main():
       # server.submit_transaction(transaction)
       print("Manage offer set at {} (+-1)".format(lowestMeaningfulCompetingOffer if highestMeaningfulCompetingBid < myBid else highestMeaningfulCompetingBid))
       # print(transaction.to_xdr())
-
+  main()
 main()
