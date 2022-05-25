@@ -9,7 +9,7 @@ BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 
-TRANSFER_SERVER = "ultrastellar.com/sep6"
+TRANSFER_SERVER = "ultrastellar.com/sep24"
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 
@@ -100,7 +100,7 @@ def main():
         network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
         base_fee = TXN_FEE_STROOPS,
       )
-      if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+      if(1): # if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
         print("Tries to do a SEP-6 buy")
         # cancel outstaning buy offer (then use total USDC)
         if(myBidID):
@@ -112,10 +112,21 @@ def main():
             offer_id = myBidID,
           )
         
-        ultrastellarServer = "https://" + TRANSFER_SERVER + "/deposit"
-        response = requests.get(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
+        ultrastellarServer = "https://" + TRANSFER_SERVER + "/transactions/deposit/interactive"
+        print(token)
+        print(ultrastellarServer)
+        reqAddr = ultrastellarServer# + "?asset_code=yUSDC&account=" + BT_TREASURY
+        print(reqAddr)
+        headers = {
+          "Authorization": "Bearer " + token,
+          "asset_code": "yUSDC",
+          "account": BT_TREASURY
+        }
+        response = requests.post(reqAddr, headers=headers)
+        print("WIN")
         # parse response.json()["how"]
         pprint(response)
+        pprint(response.json())
         return 1
         transaction.append_payment_op( #
           destination = 1, # 
@@ -152,7 +163,7 @@ def main():
           )
         # do sep 6 exchange
         ultrastellarServer = "https://" + TRANSFER_SERVER + "/withdraw"
-        response = requests.get(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
+        response = requests.post(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
         # parse response.json()["how"]
         
         
