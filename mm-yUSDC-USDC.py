@@ -1,6 +1,8 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
+#from webdriver_manager.chrome import ChromeDriverManager
 from decimal import Decimal, getcontext
 import requests, json, time, sys
+#from selenium import webdriver 
 from pprint import pprint
 import sep10
 
@@ -23,6 +25,8 @@ MAX_OFFER = 42
 
 yUSDCasset = Asset("yUSDC", yUSDC_ISSUER)
 USDCasset = Asset("USDC", USDC_ISSUER)
+#driver = webdriver.Chrome(executable_path=os.path.abspath("chromedriver.exe"))
+#driver = webdriver.Chrome(ChromeDriverManager().install())
 
 def main():
   #getcontext().prec = 7
@@ -117,16 +121,24 @@ def main():
         print(ultrastellarServer)
         reqAddr = ultrastellarServer# + "?asset_code=yUSDC&account=" + BT_TREASURY
         print(reqAddr)
-        headers = {
+        auth = {
           "Authorization": "Bearer " + token,
-          "asset_code": "yUSDC",
-          "account": BT_TREASURY
         }
-        response = requests.post(reqAddr, headers=headers)
+        info = {
+          "asset_code": "yUSDC",
+          "account": BT_TREASURY,
+          "email_address": "treasury@blocktransfer.io",
+          "amount": int(USDCtotal),
+          "account": BT_TREASURY,
+          "id_network": "stellar",
+        }
+        response = requests.post(reqAddr, headers = auth, data = info)
         print("WIN")
         # parse response.json()["how"]
         pprint(response)
         pprint(response.json())
+        url = response.json()["url"]
+        driver.get(url)
         return 1
         transaction.append_payment_op( #
           destination = 1, # 
