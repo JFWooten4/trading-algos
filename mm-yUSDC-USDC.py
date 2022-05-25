@@ -1,8 +1,8 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
 from decimal import Decimal, getcontext
-import requests, json, time, math
+import requests, json, time, sys
 from pprint import pprint
-from sep10 import Sep10
+import sep10
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 
@@ -49,13 +49,15 @@ def main():
 #  except: 
 #    print("UltraStellar authentication failed. Exiting now")
 #    return -1
-  token = Sep10("yUSDC", yUSDC_ISSUER, SECRET)
+  print(signing_keypair)
+  webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
+  print(webauth)
+  token = webauth.run_auth()
   print(token)
   # Start algo
-  
   # while timeInUnix < exprTime -> recursive call to main
   while(True):
-    time.sleep(32)
+    #time.sleep(32)
     transaction = ""
     myBidID = myAskID = 0
     requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
@@ -113,9 +115,8 @@ def main():
         network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
         base_fee = TXN_FEE_STROOPS,
       )
-      if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+      if(1): # if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
         print("Tries to do a SEP-6 buy")
-        continue
         # cancel outstaning buy offer (then use total USDC)
         if(myBidID):
           transaction.append_manage_buy_offer_op(
@@ -129,7 +130,8 @@ def main():
         ultrastellarServer = "https://" + TRANSFER_SERVER + "/deposit"
         response = requests.get(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
         # parse response.json()["how"]
-
+        pprint(response)
+        return 1
         transaction.append_payment_op( #
           destination = 1, # 
           asset = USDCasset,
