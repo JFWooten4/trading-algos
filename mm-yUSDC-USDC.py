@@ -15,7 +15,7 @@ HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 TXN_FEE_STROOPS = 5000
 
-MIN_MEANINGFUL_SIZE = 100
+MIN_MEANINGFUL_SIZE = 500
 MIN_INCREMENT = Decimal(".0000001")
 MIN_BID = 0.0000001
 MAX_BID = .99993
@@ -26,6 +26,8 @@ yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
 #driver = webdriver.Chrome(executable_path=os.path.abspath("chromedriver.exe"))
 #driver = webdriver.Chrome(ChromeDriverManager().install())
+SERVER = Server(horizon_url = "https://" + HORIZON_INST)
+TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 
 def main():
   #getcontext().prec = 7
@@ -36,8 +38,6 @@ def main():
   except:
     SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
     print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
-  server = Server(horizon_url = "https://" + HORIZON_INST)
-  treasury = server.load_account(account_id = BT_TREASURY)
   signing_keypair = Keypair.from_secret(SECRET)
   webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
   token = webauth.run_auth() # Expires in a day
@@ -100,7 +100,7 @@ def main():
     
     if(highestMeaningfulCompetingBid > myBid and USDCtotal > 5 and tempOnlyIfNoSEP6bid):
       transaction = TransactionBuilder(
-        source_account = treasury,
+        source_account = TREASURY_ACCOUNT,
         network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
         base_fee = TXN_FEE_STROOPS,
       )
@@ -120,7 +120,7 @@ def main():
     
     if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
       transaction = TransactionBuilder(
-        source_account = treasury,
+        source_account = TREASURY_ACCOUNT,
         network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
         base_fee = TXN_FEE_STROOPS,
       )
@@ -141,9 +141,12 @@ def main():
   main()
 
 def submitUnbuiltTxnToStellar(transaction, signing_keypair):
-  transaction = transaction.set_timeout(30).build()
-  transaction.sign(signing_keypair)
-  server.submit_transaction(transaction)
+  try:
+    transaction = transaction.set_timeout(30).build()
+    transaction.sign(signing_keypair)
+    SERVER.submit_transaction(transaction)
+  except:
+    return -1
 
 # testing debug with buy side 
 def appendSEP6buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal):
