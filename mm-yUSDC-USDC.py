@@ -6,21 +6,20 @@ import requests, json, time, sys, sep10
 from pprint import pprint
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
-
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 
-TRANSFER_SERVER = "ultrastellar.com/sep24"
+TRANSFER_SERVER = "https:// ... ultrastellar.com/sep24" # just make this right ... (could programatically fetch?)
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
-TXN_FEE_STROOPS = 5000
+TXN_FEE_STROOPS = 4269
 
 MIN_MEANINGFUL_SIZE = 500
 MIN_INCREMENT = Decimal(".0000001")
 MIN_BID = 0.0000001
 MAX_BID = .99993
 MIN_OFFER = 1.00007
-MAX_OFFER = 42
+MAX_OFFER = 99999
 
 yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
@@ -92,8 +91,11 @@ def main():
       if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
         lowestMeaningfulCompetingOffer = Decimal(offers["price"])
 
-    # INIT COMPLETE...
-    # BEGIN TRADING LOGIC
+    # BEGIN TRADING LOGIC #
+    
+    # These could be useful if many people mess with the algo with flash bids...
+    # tooHigh = lowestMeaningfulCompetingBid < myBid - MIN_INCREMENT
+    # tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
     
     tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
     tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
@@ -115,8 +117,8 @@ def main():
         price = bid,
         offer_id = myBidID,
       )
-      submitUnbuiltTxnToStellar(transaction, signing_keypair)
-      print("Updated bid to {}".format(bid))
+      if(submitUnbuiltTxnToStellar(transaction, signing_keypair)):
+        print("Updated bid to {}".format(bid))
     
     if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
       transaction = TransactionBuilder(
@@ -135,9 +137,9 @@ def main():
         price = ask,
         offer_id = myAskID,
       )
-      submitUnbuiltTxnToStellar(transaction, signing_keypair)
-      print("Updated ask to {}".format(ask))
-    time.sleep(21)
+      if(submitUnbuiltTxnToStellar(transaction, signing_keypair)):
+        print("Updated ask to {}".format(ask))
+    time.sleep(10)
   main()
 
 def submitUnbuiltTxnToStellar(transaction, signing_keypair):
@@ -145,8 +147,9 @@ def submitUnbuiltTxnToStellar(transaction, signing_keypair):
     transaction = transaction.set_timeout(30).build()
     transaction.sign(signing_keypair)
     SERVER.submit_transaction(transaction)
+    return 420
   except:
-    return -1
+    return 0
 
 # testing debug with buy side 
 def appendSEP6buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal):
