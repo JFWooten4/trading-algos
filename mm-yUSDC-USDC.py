@@ -1,10 +1,9 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
 #from webdriver_manager.chrome import ChromeDriverManager
 from decimal import Decimal, getcontext
-import requests, json, time, sys
+import requests, json, time, sys, sep10
 #from selenium import webdriver 
 from pprint import pprint
-import sep10
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 
@@ -14,10 +13,10 @@ USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 TRANSFER_SERVER = "ultrastellar.com/sep24"
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
-
-MIN_MEANINGFUL_SIZE = 500
-MIN_INCREMENT = Decimal(".0000001")
 TXN_FEE_STROOPS = 5000
+
+MIN_MEANINGFUL_SIZE = 100
+MIN_INCREMENT = Decimal(".0000001")
 MIN_BID = 0.0000001
 MAX_BID = .99993
 MIN_OFFER = 1.00007
@@ -37,17 +36,15 @@ def main():
   except:
     SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
     print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
-  print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
   server = Server(horizon_url = "https://" + HORIZON_INST)
   treasury = server.load_account(account_id = BT_TREASURY)
   signing_keypair = Keypair.from_secret(SECRET)
   webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
   token = webauth.run_auth() # Expires in a day
   timeIn23hours = time.time() + 86400
-  # Start algo
+  
+  print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
   while(time.time() < timeIn23hours):
-    #time.sleep(32)
-    transaction = ""
     myBidID = myAskID = 0
     requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
     data = requests.get(requestAddress).json()
@@ -98,108 +95,120 @@ def main():
     # INIT COMPLETE...
     # BEGIN TRADING LOGIC
     
-    if(highestMeaningfulCompetingBid > myBid):
-      transaction = TransactionBuilder(
-        source_account = treasury,
-        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
-        base_fee = TXN_FEE_STROOPS,
-      )
-      if(1): # if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
-        print("Tries to do a SEP-6 buy")
-        # cancel outstaning buy offer (then use total USDC)
-        if(myBidID):
-          transaction.append_manage_buy_offer_op(
-            selling = USDCasset,
-            buying = yUSDCasset,
-            amount = 0,
-            price = 1,
-            offer_id = myBidID,
-          )
-        
-        ultrastellarServer = "https://" + TRANSFER_SERVER + "/transactions/deposit/interactive"
-        print(token)
-        print(ultrastellarServer)
-        reqAddr = ultrastellarServer# + "?asset_code=yUSDC&account=" + BT_TREASURY
-        print(reqAddr)
-        auth = {
-          "Authorization": "Bearer " + token,
-        }
-        info = {
-          "asset_code": "yUSDC",
-          "account": BT_TREASURY,
-          "email_address": "treasury@blocktransfer.io",
-          "amount": int(USDCtotal),
-          "account": BT_TREASURY,
-          "id_network": "stellar",
-        }
-        response = requests.post(reqAddr, headers = auth, data = info)
-        print("WIN")
-        # parse response.json()["how"]
-        pprint(response)
-        pprint(response.json())
-        url = response.json()["url"]
-        driver.get(url)
-        return 1
-        transaction.append_payment_op( #
-          destination = 1, # 
-          asset = USDCasset,
-          amount = USDCtotal,
-        )
-        
-      else:
-        transaction.append_manage_sell_offer_op(
-          selling = USDCasset,
-          buying = yUSDCasset,
-          amount = USDCtotal,
-          price = highestMeaningfulCompetingBid + MIN_INCREMENT,
-          offer_id = myBidID,
-        )
-
-    elif(lowestMeaningfulCompetingOffer < myAsk):
-      transaction = TransactionBuilder(
-        source_account = treasury,
-        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
-        base_fee = TXN_FEE_STROOPS,
-      )
-      if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
-        print("Tries to do a SEP-6 sell")
-        continue
-        # cancel outstanding sell offer
-        if(myAskID):
-          transaction.append_manage_buy_offer_op(
-            selling = yUSDCasset,
-            buying = USDCasset,
-            amount = 0,
-            price = 1,
-            offer_id = myAskID,
-          )
-        # do sep 6 exchange
-        ultrastellarServer = "https://" + TRANSFER_SERVER + "/withdraw"
-        response = requests.post(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
-        # parse response.json()["how"]
-        
-        
-        transaction.append_payment_op( #
-          destination = 1, # 
-          asset = yUSDCasset,
-          amount = yUSDCtotal,
-        )
-        
-        
-      else:
-        transaction.append_manage_buy_offer_op(
-          selling = yUSDCasset,
-          buying = USDCasset,
-          amount = yUSDCtotal,
-          price = lowestMeaningfulCompetingOffer - MIN_INCREMENT,
-          offer_id = myBidID,
-        )
+    tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
+    tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
     
-    if(transaction):
-      transaction = transaction.set_timeout(30).build()
-      transaction.sign(signing_keypair)
-      # server.submit_transaction(transaction)
-      print("Manage offer set at {} (+-1)".format(lowestMeaningfulCompetingOffer if highestMeaningfulCompetingBid < myBid else highestMeaningfulCompetingBid))
-      # print(transaction.to_xdr())
+    if(highestMeaningfulCompetingBid > myBid and USDCtotal > 5 and tempOnlyIfNoSEP6bid):
+      transaction = TransactionBuilder(
+        source_account = treasury,
+        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
+        base_fee = TXN_FEE_STROOPS,
+      )
+      #if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+      #  
+      #else:
+      bid = highestMeaningfulCompetingBid + MIN_INCREMENT
+      transaction.append_manage_buy_offer_op(
+        selling = USDCasset,
+        buying = yUSDCasset,
+        amount = USDCtotal,
+        price = bid,
+        offer_id = myBidID,
+      )
+      submitUnbuiltTxnToStellar(transaction, signing_keypair):
+      print("Updated bid to {}".format(bid))
+    
+    if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
+      transaction = TransactionBuilder(
+        source_account = treasury,
+        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
+        base_fee = TXN_FEE_STROOPS,
+      )
+      #if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
+      #  
+      #else:
+      ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
+      transaction.append_manage_sell_offer_op(
+        selling = yUSDCasset,
+        buying = USDCasset,
+        amount = "{:.7f}".format(yUSDCtotal / ask),
+        price = ask,
+        offer_id = myAskID,
+      )
+      submitUnbuiltTxnToStellar(transaction, signing_keypair):
+      print("Updated ask to {}".format(ask))
+    time.sleep(21)
   main()
+
+def submitUnbuiltTxnToStellar(transaction, signing_keypair):
+  transaction = transaction.set_timeout(30).build()
+  transaction.sign(signing_keypair)
+  server.submit_transaction(transaction)
+
+def appendSEP6buyTxnOpToTxnEnvelope(transaction):
+  print("Tries to do a SEP-6 buy")
+  # cancel outstaning buy offer (then use total USDC)
+  if(myBidID):
+    transaction.append_manage_buy_offer_op(
+      selling = USDCasset,
+      buying = yUSDCasset,
+      amount = 0,
+      price = 1,
+      offer_id = myBidID,
+    )
+  
+  ultrastellarServer = "https://" + TRANSFER_SERVER + "/transactions/deposit/interactive"
+  print(token)
+  print(ultrastellarServer)
+  reqAddr = ultrastellarServer# + "?asset_code=yUSDC&account=" + BT_TREASURY
+  print(reqAddr)
+  auth = {
+    "Authorization": "Bearer " + token,
+  }
+  info = {
+    "asset_code": "yUSDC",
+    "account": BT_TREASURY,
+    "email_address": "treasury@blocktransfer.io",
+    "amount": int(USDCtotal),
+    "account": BT_TREASURY,
+    "id_network": "stellar",
+  }
+  response = requests.post(reqAddr, headers = auth, data = info)
+  print("WIN")
+  # parse response.json()["how"]
+  pprint(response)
+  pprint(response.json())
+  url = response.json()["url"]
+  driver.get(url)
+  return 1
+  transaction.append_payment_op( #
+    destination = 1, # 
+    asset = USDCasset,
+    amount = USDCtotal,
+  )
+
+def appendSEP6sellTxnOpToTxnEnvelope(transaction):
+  print("Tries to do a SEP-6 sell")
+  continue
+  # cancel outstanding sell offer
+  if(myAskID):
+    transaction.append_manage_buy_offer_op(
+      selling = yUSDCasset,
+      buying = USDCasset,
+      amount = 0,
+      price = 1,
+      offer_id = myAskID,
+    )
+  # do sep 6 exchange
+  ultrastellarServer = "https://" + TRANSFER_SERVER + "/withdraw"
+  response = requests.post(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
+  # parse response.json()["how"]
+  
+  
+  transaction.append_payment_op( #
+    destination = 1, # 
+    asset = yUSDCasset,
+    amount = yUSDCtotal,
+  )
+
 main()
