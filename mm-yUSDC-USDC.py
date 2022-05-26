@@ -22,8 +22,8 @@ MAX_BID = .99993
 MIN_OFFER = 1.00007
 MAX_OFFER = 42
 
-yUSDCasset = Asset("yUSDC", yUSDC_ISSUER)
-USDCasset = Asset("USDC", USDC_ISSUER)
+yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
+USDC_ASSET = Asset("USDC", USDC_ISSUER)
 #driver = webdriver.Chrome(executable_path=os.path.abspath("chromedriver.exe"))
 #driver = webdriver.Chrome(ChromeDriverManager().install())
 
@@ -105,17 +105,17 @@ def main():
         base_fee = TXN_FEE_STROOPS,
       )
       #if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
-      #  
+      #  appendSEP6buyOpToTxnEnvelope(transaction, myBidID, USDCtotal)
       #else:
       bid = highestMeaningfulCompetingBid + MIN_INCREMENT
       transaction.append_manage_buy_offer_op(
-        selling = USDCasset,
-        buying = yUSDCasset,
+        selling = USDC_ASSET,
+        buying = yUSDC_ASSET,
         amount = USDCtotal,
         price = bid,
         offer_id = myBidID,
       )
-      submitUnbuiltTxnToStellar(transaction, signing_keypair):
+      submitUnbuiltTxnToStellar(transaction, signing_keypair)
       print("Updated bid to {}".format(bid))
     
     if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
@@ -125,17 +125,17 @@ def main():
         base_fee = TXN_FEE_STROOPS,
       )
       #if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
-      #  
+      #  appendSEP6sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal)
       #else:
       ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
       transaction.append_manage_sell_offer_op(
-        selling = yUSDCasset,
-        buying = USDCasset,
+        selling = yUSDC_ASSET,
+        buying = USDC_ASSET,
         amount = "{:.7f}".format(yUSDCtotal / ask),
         price = ask,
         offer_id = myAskID,
       )
-      submitUnbuiltTxnToStellar(transaction, signing_keypair):
+      submitUnbuiltTxnToStellar(transaction, signing_keypair)
       print("Updated ask to {}".format(ask))
     time.sleep(21)
   main()
@@ -145,13 +145,14 @@ def submitUnbuiltTxnToStellar(transaction, signing_keypair):
   transaction.sign(signing_keypair)
   server.submit_transaction(transaction)
 
-def appendSEP6buyTxnOpToTxnEnvelope(transaction):
+# testing debug with buy side 
+def appendSEP6buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal):
   print("Tries to do a SEP-6 buy")
   # cancel outstaning buy offer (then use total USDC)
   if(myBidID):
-    transaction.append_manage_buy_offer_op(
-      selling = USDCasset,
-      buying = yUSDCasset,
+    transactionEnvelope.append_manage_buy_offer_op(
+      selling = USDC_ASSET,
+      buying = yUSDC_ASSET,
       amount = 0,
       price = 1,
       offer_id = myBidID,
@@ -181,20 +182,19 @@ def appendSEP6buyTxnOpToTxnEnvelope(transaction):
   url = response.json()["url"]
   driver.get(url)
   return 1
-  transaction.append_payment_op( #
+  transactionEnvelope.append_payment_op( #
     destination = 1, # 
-    asset = USDCasset,
+    asset = USDC_ASSET,
     amount = USDCtotal,
   )
 
-def appendSEP6sellTxnOpToTxnEnvelope(transaction):
+def appendSEP6sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal):
   print("Tries to do a SEP-6 sell")
-  continue
   # cancel outstanding sell offer
   if(myAskID):
-    transaction.append_manage_buy_offer_op(
-      selling = yUSDCasset,
-      buying = USDCasset,
+    transactionEnvelope.append_manage_sell_offer_op( # edge test here cancelling a sell vs. buy offer
+      selling = yUSDC_ASSET,
+      buying = USDC_ASSET,
       amount = 0,
       price = 1,
       offer_id = myAskID,
@@ -205,9 +205,9 @@ def appendSEP6sellTxnOpToTxnEnvelope(transaction):
   # parse response.json()["how"]
   
   
-  transaction.append_payment_op( #
+  transactionEnvelope.append_payment_op( #
     destination = 1, # 
-    asset = yUSDCasset,
+    asset = yUSDC_ASSET,
     amount = yUSDCtotal,
   )
 
