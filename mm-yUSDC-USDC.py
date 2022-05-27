@@ -160,9 +160,9 @@ def main():
           )
           print("Updated ask to {}".format(ask))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
-      time.sleep(10)
     except Exception:
       continue
+    time.sleep(10)
   main()
 
 def buildTxnEnv():
