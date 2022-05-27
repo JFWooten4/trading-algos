@@ -127,5 +127,39 @@ class Sep10:
 
             return sep10_token
 
-    def sep10_failed_requests(self, req_content):
+    def sep10_failed_requests(self):
         return {"error": 'Invalide Url'}, 400
+
+class getTransferServerSEP24:
+    def __init__(self, asset_code, asset_issuer, _horizon_url="https://horizon.stellar.org", _network=Network.PUBLIC_NETWORK_PASSPHRASE):
+        self.asset_code = asset_code
+        self.asset_issuer = asset_issuer
+        self.general_stellar_url = _horizon_url
+        self.NETWORK_PASSPHRASE = _network
+        self.server = Server(horizon_url=self.general_stellar_url)
+
+    def pullFromWeb(self):
+      try:
+        web_content = self.server.assets().for_code(asset_code=self.asset_code).for_issuer(asset_issuer=self.asset_issuer).call()
+      except (BadResponseError, BadRequestError) as E:
+        return E
+      else:
+        try:
+            toml_url =web_content['_embedded']['records'][0]['_links']['toml']['href'] 
+        except IndexError:
+            toml_url =web_content['_embedded']['records']
+        else:
+            url_validate = validators.url(toml_url)
+            if url_validate == True:
+                transfer_serve = requests.get(toml_url)
+                server_res =transfer_serve.content.decode()
+                try:
+                    global toml_content
+                    toml_content = toml.loads(server_res)
+                except toml.decoder.TomlDecodeError:
+                    return {"error": 'Error Loading Toml file'}, 403
+                else:
+                    try:
+                        return(toml_content['TRANSFER_SERVER_SEP0024'])
+                    except Exception as e:
+                        return {"error": 'Error Loading Toml file'}, 400
