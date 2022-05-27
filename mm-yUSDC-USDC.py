@@ -4,6 +4,7 @@ from decimal import Decimal, getcontext
 import requests, json, time, sys, sep10
 #from selenium import webdriver 
 from pprint import pprint
+import selenium
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
@@ -41,113 +42,119 @@ def main():
   webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
   token = webauth.run_auth() # Expires in a day
   timeIn23hours = time.time() + 86400
-  
   print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
   while(time.time() < timeIn23hours):
-    myBidID = myAskID = 0
-    requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
-    data = requests.get(requestAddress).json()
-    accountBalances = data["balances"]
-    
-    for balances in accountBalances:
-      try:
-        if(balances["asset_code"] == "USDC"):
-          USDCbuyOutstanding = Decimal(balances["selling_liabilities"])
-          USDCtotal = Decimal(balances["balance"])
-          USDCavailable = USDCtotal - USDCbuyOutstanding
-        elif(balances["asset_code"] == "yUSDC"):
-          yUSDCsellOutstanding = Decimal(balances["selling_liabilities"])
-          yUSDCtotal = Decimal(balances["balance"])
-          yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
-      except:
-        continue
-
-    requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
-    data = requests.get(requestAddress).json()
-    outstandingOffers = data["_embedded"]["records"]
-    for offers in outstandingOffers:
-      try:
-        if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-          myAsk = Decimal(offers["price"])
-          myAskID = int(offers['id'])
-        elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"]) # Always buying in terms of selling
-          myBidID = int(offers['id'])
-      except:
-        continue
-    
-    requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
-    data = requests.get(requestAddress).json()
-    bidsFromStellar = data["bids"]
-    asksFromStellar = data["asks"]
-    
-    highestMeaningfulCompetingBid = MIN_BID
-    for bids in bidsFromStellar:
-      if(Decimal(bids["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(bids["price"]) > highestMeaningfulCompetingBid and highestMeaningfulCompetingBid != myBid):
-        highestMeaningfulCompetingBid = Decimal(bids["price"])
-    
-    lowestMeaningfulCompetingOffer = MAX_OFFER
-    for offers in asksFromStellar:
-      if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
-        lowestMeaningfulCompetingOffer = Decimal(offers["price"])
-
-    # BEGIN TRADING LOGIC #
-    
-    # These could be useful if many people mess with the algo with flash bids...
-    # tooHigh = lowestMeaningfulCompetingBid < myBid - MIN_INCREMENT
-    # tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
-    
-    tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
-    tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
-    
-    if(highestMeaningfulCompetingBid > myBid and USDCtotal > 5 and tempOnlyIfNoSEP6bid):
-      transaction = TransactionBuilder(
-        source_account = TREASURY_ACCOUNT,
-        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
-        base_fee = TXN_FEE_STROOPS,
-      )
-      #if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
-      #  appendSEP6buyOpToTxnEnvelope(transaction, myBidID, USDCtotal)
-      #else:
-      bid = highestMeaningfulCompetingBid + MIN_INCREMENT
-      transaction.append_manage_buy_offer_op(
-        selling = USDC_ASSET,
-        buying = yUSDC_ASSET,
-        amount = USDCtotal,
-        price = bid,
-        offer_id = myBidID,
-      )
-      if(submitUnbuiltTxnToStellar(transaction, signing_keypair)):
+    try:
+      myBidID = myAskID = 0
+      requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
+      data = requests.get(requestAddress).json()
+      accountBalances = data["balances"]
+      
+      for balances in accountBalances:
+        try:
+          if(balances["asset_code"] == "USDC"):
+            USDCbuyOutstanding = Decimal(balances["selling_liabilities"])
+            USDCtotal = Decimal(balances["balance"])
+            USDCavailable = USDCtotal - USDCbuyOutstanding
+          elif(balances["asset_code"] == "yUSDC"):
+            yUSDCsellOutstanding = Decimal(balances["selling_liabilities"])
+            yUSDCtotal = Decimal(balances["balance"])
+            yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
+        except:
+          continue
+      
+      requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
+      data = requests.get(requestAddress).json()
+      outstandingOffers = data["_embedded"]["records"]
+      for offers in outstandingOffers:
+        try:
+          if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
+            myAsk = Decimal(offers["price"])
+            myAskID = int(offers['id'])
+          elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
+            myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"]) # Always buying in terms of selling
+            myBidID = int(offers['id'])
+        except:
+          continue
+      
+      requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
+      data = requests.get(requestAddress).json()
+      bidsFromStellar = data["bids"]
+      asksFromStellar = data["asks"]
+      
+      highestMeaningfulCompetingBid = MIN_BID
+      for bids in bidsFromStellar:
+        if(Decimal(bids["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(bids["price"]) > highestMeaningfulCompetingBid and highestMeaningfulCompetingBid != myBid):
+          highestMeaningfulCompetingBid = Decimal(bids["price"])
+      
+      lowestMeaningfulCompetingOffer = MAX_OFFER
+      for offers in asksFromStellar:
+        if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
+          lowestMeaningfulCompetingOffer = Decimal(offers["price"])
+      
+      # BEGIN TRADING LOGIC #
+      
+      # These could be useful if many people mess with the algo with flash bids...
+      # tooHigh = lowestMeaningfulCompetingBid < myBid - MIN_INCREMENT
+      # tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
+      
+      tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
+      tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
+      
+      if(highestMeaningfulCompetingBid > myBid and USDCtotal > 5 and tempOnlyIfNoSEP6bid):
+        transaction = buildTxn()
+        #if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+        #  appendSEP6buyOpToTxnEnvelope(transaction, myBidID, USDCtotal)
+        #  print("Executed SEP6 buy")
+        #else:
+        bid = highestMeaningfulCompetingBid + MIN_INCREMENT
+        transaction.append_manage_buy_offer_op(
+          selling = USDC_ASSET,
+          buying = yUSDC_ASSET,
+          amount = USDCtotal,
+          price = bid,
+          offer_id = myBidID,
+        )
         print("Updated bid to {}".format(bid))
-    
-    if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
-      transaction = TransactionBuilder(
-        source_account = TREASURY_ACCOUNT,
-        network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
-        base_fee = TXN_FEE_STROOPS,
-      )
-      #if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
-      #  appendSEP6sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal)
-      #else:
-      ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
-      transaction.append_manage_sell_offer_op(
-        selling = yUSDC_ASSET,
-        buying = USDC_ASSET,
-        amount = "{:.7f}".format(yUSDCtotal / ask),
-        price = ask,
-        offer_id = myAskID,
-      )
-      if(submitUnbuiltTxnToStellar(transaction, signing_keypair)):
+        
+        submitUnbuiltTxnToStellar(transaction, signing_keypair)
+      
+      if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
+        transaction = buildTxn()
+        #if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
+        #  appendSEP6sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal)
+        #  print("Executed SEP6 sell")
+        #else:
+        ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
+        transaction.append_manage_sell_offer_op(
+          selling = yUSDC_ASSET,
+          buying = USDC_ASSET,
+          amount = "{:.7f}".format(yUSDCtotal / ask),
+          price = ask,
+          offer_id = myAskID,
+        )
         print("Updated ask to {}".format(ask))
-    time.sleep(10)
+        
+        submitUnbuiltTxnToStellar(transaction, signing_keypair)
+      time.sleep(10)
+    except Exception:
+      continue
   main()
+
+def buildTxn():
+  return(
+    TransactionBuilder(
+      source_account = TREASURY_ACCOUNT,
+      network_passphrase = Network.PUBLIC_NETWORK_PASSPHRASE,
+      base_fee = TXN_FEE_STROOPS,
+    )
+  )
 
 def submitUnbuiltTxnToStellar(transaction, signing_keypair):
   try:
     transaction = transaction.set_timeout(30).build()
     transaction.sign(signing_keypair)
     SERVER.submit_transaction(transaction)
-    return 420
   except:
     return 0
 
