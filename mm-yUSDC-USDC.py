@@ -26,7 +26,7 @@ yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
 
 PATH = Service(executable_path="/usr/bin/chromedriver")
-DRIVER = webdriver.Chrome(service = PATH)
+DRIVER = webdriver.Chrome(service = PATH).close()
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 
@@ -87,21 +87,16 @@ def main():
       for offers in asksFromStellar:
         if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
-      
-      
-      
-      
-      
-      tooHigh = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
-      tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
-      outbid = highestMeaningfulCompetingBid > myBid and USDCtotal > MIN_MEANINGFUL_SIZE
-      undercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > MIN_MEANINGFUL_SIZE
-      
-      
-      tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
-      tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
-      
-      if 0:#(outbid and tempOnlyIfNoSEP6bid):
+      ####### BEGIN TRADING LOGIC #######
+      yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
+      USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
+      buyersTooExcited = highestMeaningfulCompetingBid >= MAX_BID
+      sellersTooExcited = lowestMeaningfulCompetingOffer <= MIN_OFFER
+      tooHighBid = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
+      tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
+      meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
+      meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
+      if(meaningfullyOutbid or tooHighBid):
         transaction = buildTxnEnv()
         if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
@@ -109,7 +104,7 @@ def main():
             depositsFrozenFlag = True
             continue
           print("Executed SEP6 buy")
-        else:
+        elif(not buyersTooExcited):
           bid = highestMeaningfulCompetingBid + MIN_INCREMENT
           transaction.append_manage_buy_offer_op(
             selling = USDC_ASSET,
@@ -120,10 +115,11 @@ def main():
           )
           print("Updated bid to {}".format(bid))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
-      
-      if 2:#(undercut and tempOnlyIfNoSEP6ask):
+      if(meaningfullyUndercut or tooLowAsk):
         transaction = buildTxnEnv()
-        if 2:#(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
+        
+        tempDisable = True
+        if(not withdrawsFrozenFlag and sellersTooExcited and not tempDisable):
           frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
           if(frozen):
             withdrawsFrozenFlag = True
@@ -132,7 +128,8 @@ def main():
           
           print(transaction.set_timeout(30).build().to_xdr())
           return 2 #     WITHDRAWLS NOT TESTED YET -- DO NOT PUT INTO PRODUCTION
-        else:
+          
+        elif(not sellersTooExcited):
           ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
           transaction.append_manage_sell_offer_op(
             selling = yUSDC_ASSET,
