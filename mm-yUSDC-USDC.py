@@ -15,7 +15,7 @@ HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 TXN_FEE_STROOPS = 4269
 
-MIN_MEANINGFUL_SIZE = 500
+MIN_MEANINGFUL_SIZE = 420.69
 MIN_INCREMENT = Decimal(".0000001")
 MIN_BID = 0.0000001
 MAX_BID = .99993
@@ -26,7 +26,7 @@ yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
 
 PATH = Service(executable_path="/usr/bin/chromedriver")
-DRIVER = webdriver.Chrome(service = PATH).close()
+DRIVER = webdriver.Chrome(service = PATH)
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 
@@ -96,22 +96,24 @@ def main():
         if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
       ####### BEGIN TRADING LOGIC #######
-      yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
       USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
+      yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
+      notBuyingAll = USDCavailable > MIN_MEANINGFUL_SIZE
+      notSellingAll = yUSDCavailable > MIN_MEANINGFUL_SIZE
       buyersTooExcited = highestMeaningfulCompetingBid >= MAX_BID
       sellersTooExcited = lowestMeaningfulCompetingOffer <= MIN_OFFER
       tooHighBid = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
       tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
       meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
       meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
-      if(meaningfullyOutbid or tooHighBid):
+      if(meaningfullyOutbid or tooHighBid or notBuyingAll):
         transaction = buildTxnEnv()
         if(not depositsFrozenFlag and buyersTooExcited):
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
           if(frozen):
             depositsFrozenFlag = True
             continue
-          print("Executed SEP6 buy")
+          print("Executed SEP24 buy")
         elif(not buyersTooExcited):
           bid = highestMeaningfulCompetingBid + MIN_INCREMENT
           transaction.append_manage_buy_offer_op(
@@ -123,8 +125,12 @@ def main():
           )
           print("Updated bid to {}".format(bid))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
-      if(meaningfullyUndercut or tooLowAsk):
+      if(meaningfullyUndercut or tooLowAsk or notSellingAll):
         transaction = buildTxnEnv()
+        
+        
+        
+        
         
         tempDisable = True
         if(not withdrawsFrozenFlag and sellersTooExcited and not tempDisable):
@@ -132,11 +138,17 @@ def main():
           if(frozen):
             withdrawsFrozenFlag = True
             continue
-          print("Executed SEP6 sell")
+          print("Executed SEP24 sell")
           
           print(transaction.set_timeout(30).build().to_xdr())
           return 2 #     WITHDRAWLS NOT TESTED YET -- DO NOT PUT INTO PRODUCTION
           
+        
+        
+        
+        
+        
+        
         elif(not sellersTooExcited):
           ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
           transaction.append_manage_sell_offer_op(
@@ -177,7 +189,6 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
     "asset_code": "yUSDC",
     "account": BT_TREASURY,
     "email_address": "treasury@blocktransfer.io",
-    "amount": int(USDCtotal),
     "account": BT_TREASURY,
   }
   response = requests.post(ultrastellarServer, headers=auth, data=info)
@@ -186,6 +197,8 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
   except:
     print("Attempted SEP24 deposit: disabled")
     return 1
+  amountField = DRIVER.find_element(by=By.NAME, value="amount")
+  amountField.send_keys(int(USDCtotal))
   networkField = DRIVER.find_element(by=By.NAME, value="network")
   networkField.send_keys("stellar")
   DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
@@ -205,7 +218,6 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
     asset = USDC_ASSET,
     amount = SEP24amount,
   ).add_text_memo(SEP24memo)
-  DRIVER.close()
   return 0
 
 def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, token):
@@ -216,7 +228,6 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
     "asset_code": "yUSDC",
     "account": BT_TREASURY,
     "email_address": "treasury@blocktransfer.io",
-    "amount": yUSDCtotal,
     "account": BT_TREASURY,
   }
   response = requests.post(ultrastellarServer, headers=auth, data=info)
@@ -225,8 +236,12 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
   except:
     print("Attempted SEP24 withdraw: disabled")
     return 1
+  amountField = DRIVER.find_element(by=By.NAME, value="amount")
+  amountField.send_keys(yUSDCtotal)
   networkField = DRIVER.find_element(by=By.NAME, value="network")
   networkField.send_keys("stellar")
+  print("Test: Sleeping: verify amount field")
+  time.sleep(100)
   DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
   SEP24destination = DRIVER.find_element(by=By.NAME, value="usdc_deposit_wallet").get_attribute("value")
   SEP24amount = DRIVER.find_element(by=By.NAME, value="amount_to_deposit").get_attribute("value")
@@ -244,7 +259,6 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
     asset = yUSDC_ASSET,
     amount = SEP24amount,
   ).add_text_memo(SEP24memo)
-  DRIVER.close()
   return 0
 
 main()
