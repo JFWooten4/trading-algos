@@ -98,7 +98,7 @@ def main():
       meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
       if(meaningfullyOutbid or tooHighBid):
         transaction = buildTxnEnv()
-        if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+        if(not depositsFrozenFlag and buyersTooExcited):
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
           if(frozen):
             depositsFrozenFlag = True
