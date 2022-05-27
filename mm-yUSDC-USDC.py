@@ -1,10 +1,9 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
-#from webdriver_manager.chrome import ChromeDriverManager
-from decimal import Decimal, getcontext
-import requests, json, time, sys, sep10
-#from selenium import webdriver 
+from selenium.webdriver.chrome.service import Service
+import selenium.webdriver as webdriver
+from decimal import Decimal
 from pprint import pprint
-import selenium
+import requests, json, time, sys, sep10
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
@@ -24,13 +23,14 @@ MAX_OFFER = 99999
 
 yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
-#driver = webdriver.Chrome(executable_path=os.path.abspath("chromedriver.exe"))
-#driver = webdriver.Chrome(ChromeDriverManager().install())
+
+PATH = Service(executable_path="/usr/bin/chromedriver")
+DRIVER = webdriver.Chrome(service = PATH)
+DRIVER.get("https://stellar.org")
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 
 def main():
-  #getcontext().prec = 7
   myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = Decimal(0)
   myAsk = Decimal(100)
   try:
