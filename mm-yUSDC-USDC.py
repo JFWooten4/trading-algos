@@ -1,5 +1,6 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 import selenium.webdriver as webdriver
 from decimal import Decimal
 from pprint import pprint
@@ -26,13 +27,13 @@ USDC_ASSET = Asset("USDC", USDC_ISSUER)
 
 PATH = Service(executable_path="/usr/bin/chromedriver")
 DRIVER = webdriver.Chrome(service = PATH)
-DRIVER.get("https://ultrastellar.com/.well-known/stellar.toml")
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 
 def main():
   myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = Decimal(0)
   myAsk = Decimal(100)
+  depositsFrozenFlag = withdrawsFrozenFlag = False
   try:
     SECRET = sys.argv[1]
   except:
@@ -40,10 +41,10 @@ def main():
     print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
   signing_keypair = Keypair.from_secret(SECRET)
   webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
-  token = webauth.run_auth() # Expires in a day
-  timeIn23hours = time.time() + 86400
+  token = webauth.run_auth()
+  timeInAnHourToResetSEP24flagsPlusAuth = time.time() + 3600
   print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
-  while(time.time() < timeIn23hours):
+  while(time.time() < timeInAnHourToResetSEP24flagsPlusAuth):
     try:
       myBidID = myAskID = 0
       requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
@@ -87,24 +88,27 @@ def main():
         if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
       
-      # BEGIN TRADING LOGIC #
       
-      # These could be useful if many people mess with the algo with flash bids...
       
-      # perhaps do these post-SEP24:
       
-      # tooHigh = lowestMeaningfulCompetingBid < myBid - MIN_INCREMENT
-      # tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
+      
+      tooHigh = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
+      tooLow = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
+      outbid = highestMeaningfulCompetingBid > myBid and USDCtotal > MIN_MEANINGFUL_SIZE
+      undercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > MIN_MEANINGFUL_SIZE
+      
       
       tempOnlyIfNoSEP6bid = highestMeaningfulCompetingBid < 1
       tempOnlyIfNoSEP6ask = lowestMeaningfulCompetingOffer > 1
       
-      if 1:#(highestMeaningfulCompetingBid > myBid and USDCtotal > 5 and tempOnlyIfNoSEP6bid):
-        transaction = buildTxn()
-        if 1: # (highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
-          appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
+      if 0:#(outbid and tempOnlyIfNoSEP6bid):
+        transaction = buildTxnEnv()
+        if(highestMeaningfulCompetingBid >= MAX_BID and USDCavailable > MIN_MEANINGFUL_SIZE):
+          frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
+          if(frozen):
+            depositsFrozenFlag = True
+            continue
           print("Executed SEP6 buy")
-          return 1
         else:
           bid = highestMeaningfulCompetingBid + MIN_INCREMENT
           transaction.append_manage_buy_offer_op(
@@ -117,22 +121,27 @@ def main():
           print("Updated bid to {}".format(bid))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
       
-      if(lowestMeaningfulCompetingOffer < myAsk and yUSDCtotal > 5 and tempOnlyIfNoSEP6ask):
-        transaction = buildTxn()
-        #if(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
-        #  appendSEP6sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal)
-        #  print("Executed SEP6 sell")
-        #else:
-        ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
-        transaction.append_manage_sell_offer_op(
-          selling = yUSDC_ASSET,
-          buying = USDC_ASSET,
-          amount = "{:.7f}".format(yUSDCtotal / ask),
-          price = ask,
-          offer_id = myAskID,
-        )
-        print("Updated ask to {}".format(ask))
-        
+      if 2:#(undercut and tempOnlyIfNoSEP6ask):
+        transaction = buildTxnEnv()
+        if 2:#(lowestMeaningfulCompetingOffer <= MIN_OFFER and yUSDCavailable > MIN_MEANINGFUL_SIZE):
+          frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
+          if(frozen):
+            withdrawsFrozenFlag = True
+            continue
+          print("Executed SEP6 sell")
+          
+          print(transaction.set_timeout(30).build().to_xdr())
+          return 2 #     WITHDRAWLS NOT TESTED YET -- DO NOT PUT INTO PRODUCTION
+        else:
+          ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
+          transaction.append_manage_sell_offer_op(
+            selling = yUSDC_ASSET,
+            buying = USDC_ASSET,
+            amount = "{:.7f}".format(yUSDCtotal / ask),
+            price = ask,
+            offer_id = myAskID,
+          )
+          print("Updated ask to {}".format(ask))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
       time.sleep(10)
     except KeyboardInterrupt:#Exception:
@@ -141,7 +150,7 @@ def main():
       continue
   main()
 
-def buildTxn():
+def buildTxnEnv():
   return(
     TransactionBuilder(
       source_account = TREASURY_ACCOUNT,
@@ -158,17 +167,7 @@ def submitUnbuiltTxnToStellar(transaction, signing_keypair):
   except:
     return 0
 
-# testing debug with buy side 
 def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token):
-  # cancel outstaning buy offer (then use total USDC)
-  if(myBidID):
-    transactionEnvelope.append_manage_buy_offer_op(
-      selling = USDC_ASSET,
-      buying = yUSDC_ASSET,
-      amount = "0",
-      price = "1",
-      offer_id = myBidID,
-    )
   ultrastellarServer = TRANSFER_SERVER + "/transactions/deposit/interactive"
   auth = { "Authorization": "Bearer " + token, }
   info = {
@@ -178,49 +177,71 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
     "amount": int(USDCtotal),
     "account": BT_TREASURY,
   }
-  response = requests.post(ultrastellarServer, headers = auth, data = info)
-  DRIVER.get(response.json()["url"])
-  
-  
-  networkField = DRIVER.find_element_by_name("network")
-  networkField.send_keys("stellar") # US Implimentation specific
-  DRIVER.find_element_by_class_name("mdc-button__label").click() # Likely implimentation specific
-  
-  SEP24destination = DRIVER.find_element_by_name("")
-  SEP24amount = DRIVER.find_element_by_name("")
-  SEP24memo = DRIVER.find_element_by_name("")
-  
-  print(test)
-  return 1
-  transactionEnvelope.append_payment_op( #
-    destination = SEP24destination, # 
+  response = requests.post(ultrastellarServer, headers=auth, data=info)
+  try:
+    DRIVER.get(response.json()["url"])
+  except:
+    print("Attempted SEP24 deposit: disabled")
+    return 1
+  networkField = DRIVER.find_element(by=By.NAME, value="network")
+  networkField.send_keys("stellar")
+  DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
+  SEP24destination = DRIVER.find_element(by=By.NAME, value="usdc_deposit_wallet").get_attribute("value")
+  SEP24amount = DRIVER.find_element(by=By.NAME, value="amount_to_deposit").get_attribute("value")
+  SEP24memo = DRIVER.find_element(by=By.NAME, value="xlm_deposit_wallet").get_attribute("value")
+  if(myBidID):
+    transactionEnvelope.append_manage_buy_offer_op(
+      selling = USDC_ASSET,
+      buying = yUSDC_ASSET,
+      amount = "0",
+      price = "1",
+      offer_id = myBidID,
+    )
+  transactionEnvelope.append_payment_op(
+    destination = SEP24destination,
     asset = USDC_ASSET,
     amount = SEP24amount,
   ).add_text_memo(SEP24memo)
-  time.sleep(100) #testing
   DRIVER.close()
+  return 0
 
-def appendSEP6sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal):
-  print("Tries to do a SEP-6 sell")
-  # cancel outstanding sell offer
+def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, token):
+  ultrastellarServer = TRANSFER_SERVER + "/transactions/withdraw/interactive"
+  print(ultrastellarServer)
+  auth = { "Authorization": "Bearer " + token, }
+  info = {
+    "asset_code": "yUSDC",
+    "account": BT_TREASURY,
+    "email_address": "treasury@blocktransfer.io",
+    "amount": yUSDCtotal,
+    "account": BT_TREASURY,
+  }
+  response = requests.post(ultrastellarServer, headers=auth, data=info)
+  try:
+    DRIVER.get(response.json()["url"])
+  except:
+    print("Attempted SEP24 withdraw: disabled")
+    return 1
+  networkField = DRIVER.find_element(by=By.NAME, value="network")
+  networkField.send_keys("stellar")
+  DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
+  SEP24destination = DRIVER.find_element(by=By.NAME, value="usdc_deposit_wallet").get_attribute("value")
+  SEP24amount = DRIVER.find_element(by=By.NAME, value="amount_to_deposit").get_attribute("value")
+  SEP24memo = DRIVER.find_element(by=By.NAME, value="xlm_deposit_wallet").get_attribute("value")
   if(myAskID):
-    transactionEnvelope.append_manage_sell_offer_op( # edge test here cancelling a sell vs. buy offer
-      selling = yUSDC_ASSET,
-      buying = USDC_ASSET,
+    transactionEnvelope.append_manage_sell_offer_op(
+      selling = USDC_ASSET,
+      buying = yUSDC_ASSET,
       amount = "0",
-      price = 1,
+      price = "1",
       offer_id = myAskID,
     )
-  # do sep 6 exchange
-  ultrastellarServer = "https://" + TRANSFER_SERVER + "/withdraw"
-  response = requests.post(ultrastellarServer + "?asset_code=yUSDC&account=" + BT_TREASURY)
-  # parse response.json()["how"]
-  
-  
-  transactionEnvelope.append_payment_op( #
-    destination = 1, # 
+  transactionEnvelope.append_payment_op(
+    destination = SEP24destination,
     asset = yUSDC_ASSET,
-    amount = yUSDCtotal,
-  )
+    amount = SEP24amount,
+  ).add_text_memo(SEP24memo)
+  DRIVER.close()
+  return 0
 
 main()
