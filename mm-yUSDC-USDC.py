@@ -50,31 +50,39 @@ def main():
       requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
       data = requests.get(requestAddress).json()
       accountBalances = data["balances"]
-      for balances in accountBalances:
-        try:
-          if(balances["asset_code"] == "USDC"):
-            USDCbuyOutstanding = Decimal(balances["selling_liabilities"])
-            USDCtotal = Decimal(balances["balance"])
-            USDCavailable = USDCtotal - USDCbuyOutstanding
-          elif(balances["asset_code"] == "yUSDC"):
-            yUSDCsellOutstanding = Decimal(balances["selling_liabilities"])
-            yUSDCtotal = Decimal(balances["balance"])
-            yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
-        except:
-          continue
+    except Exception:
+      pprint(data)
+      continue
+    for balances in accountBalances:
+      try:
+        if(balances["asset_code"] == "USDC"):
+          USDCbuyOutstanding = Decimal(balances["selling_liabilities"])
+          USDCtotal = Decimal(balances["balance"])
+          USDCavailable = USDCtotal - USDCbuyOutstanding
+        elif(balances["asset_code"] == "yUSDC"):
+          yUSDCsellOutstanding = Decimal(balances["selling_liabilities"])
+          yUSDCtotal = Decimal(balances["balance"])
+          yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
+      except:
+        continue
+    try:    
       requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
       data = requests.get(requestAddress).json()
       outstandingOffers = data["_embedded"]["records"]
-      for offers in outstandingOffers:
-        try:
-          if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-            myAsk = Decimal(offers["price"])
-            myAskID = int(offers['id'])
-          elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-            myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"]) # Always buying in terms of selling
-            myBidID = int(offers['id'])
-        except:
-          continue
+    except Exception:
+      pprint(data)
+      continue
+    for offers in outstandingOffers:
+      try:
+        if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
+          myAsk = Decimal(offers["price"])
+          myAskID = int(offers['id'])
+        elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
+          myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"]) # Always buying in terms of selling
+          myBidID = int(offers['id'])
+      except:
+        continue
+    try:
       requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
       data = requests.get(requestAddress).json()
       bidsFromStellar = data["bids"]
@@ -134,16 +142,14 @@ def main():
           transaction.append_manage_sell_offer_op(
             selling = yUSDC_ASSET,
             buying = USDC_ASSET,
-            amount = "{:.7f}".format(yUSDCtotal / ask),
+            amount = "{:.7f}".format(yUSDCtotal * ask),
             price = ask,
             offer_id = myAskID,
           )
           print("Updated ask to {}".format(ask))
         submitUnbuiltTxnToStellar(transaction, signing_keypair)
       time.sleep(10)
-    except KeyboardInterrupt:#Exception:
-      print("Failed exception")
-      return 0
+    except Exception:
       continue
   main()
 
