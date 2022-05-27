@@ -6,44 +6,41 @@ from decimal import Decimal
 from pprint import pprint
 import requests, json, time, sys, sep10
 
+####### SET SPREAD, FEES, & SIZE #######
+MIN_MEANINGFUL_SIZE = 420.69
+TXN_FEE_STROOPS = 4269
+MAX_BID = .99993
+MIN_OFFER = 1.00007
+
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-
-TRANSFER_SERVER = sep10.getTransferServerSEP24("yUSDC", yUSDC_ISSUER).pullFromWeb()
+TRANSFER_SERVER = sep10.transferServerSEP24("yUSDC", yUSDC_ISSUER).get()
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
-TXN_FEE_STROOPS = 4269
-
-MIN_MEANINGFUL_SIZE = 420.69
 MIN_INCREMENT = Decimal(".0000001")
-MIN_BID = 0.0000001
-MAX_BID = .99993
-MIN_OFFER = 1.00007
 MAX_OFFER = 99999
-
+MIN_BID = 0.0000001
 yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
-
 PATH = Service(executable_path="/usr/bin/chromedriver")
 DRIVER = webdriver.Chrome(service = PATH)
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
+try:
+    SECRET = sys.argv[1]
+except:
+  SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
+  print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
+SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
+print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
 def main():
   myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = Decimal(0)
   myAsk = Decimal(100)
   depositsFrozenFlag = withdrawsFrozenFlag = False
-  try:
-    SECRET = sys.argv[1]
-  except:
-    SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
-    print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
-  signing_keypair = Keypair.from_secret(SECRET)
-  webauth = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET)
-  token = webauth.run_auth()
+  token = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET).run_auth()
   timeInAnHourToResetSEP24flagsPlusAuth = time.time() + 3600
-  print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
   while(time.time() < timeInAnHourToResetSEP24flagsPlusAuth):
     try:
       myBidID = myAskID = 0
@@ -93,7 +90,7 @@ def main():
         if(Decimal(bids["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(bids["price"]) > highestMeaningfulCompetingBid and highestMeaningfulCompetingBid != myBid):
           highestMeaningfulCompetingBid = Decimal(bids["price"])
       for offers in asksFromStellar:
-        if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and lowestMeaningfulCompetingOffer != myAsk):
+        if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
       ####### BEGIN TRADING LOGIC #######
       USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
@@ -124,7 +121,7 @@ def main():
             offer_id = myBidID,
           )
           print("Updated bid to {}".format(bid))
-        submitUnbuiltTxnToStellar(transaction, signing_keypair)
+        submitUnbuiltTxnToStellar(transaction)
       if(meaningfullyUndercut or tooLowAsk or notSellingAll):
         transaction = buildTxnEnv()
         
@@ -154,12 +151,12 @@ def main():
           transaction.append_manage_sell_offer_op(
             selling = yUSDC_ASSET,
             buying = USDC_ASSET,
-            amount = "{:.7f}".format(yUSDCtotal * ask),
+            amount = yUSDCtotal, #"{:.7f}".format(yUSDCtotal), #TODO: Works? 
             price = ask,
             offer_id = myAskID,
           )
           print("Updated ask to {}".format(ask))
-        submitUnbuiltTxnToStellar(transaction, signing_keypair)
+        submitUnbuiltTxnToStellar(transaction)
       time.sleep(10)
     except Exception:
       continue
@@ -174,10 +171,10 @@ def buildTxnEnv():
     )
   )
 
-def submitUnbuiltTxnToStellar(transaction, signing_keypair):
+def submitUnbuiltTxnToStellar(transaction):
   try:
     transaction = transaction.set_timeout(30).build()
-    transaction.sign(signing_keypair)
+    transaction.sign(SIGNING_KEYPAIR)
     SERVER.submit_transaction(transaction)
   except:
     return 0

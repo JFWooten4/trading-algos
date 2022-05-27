@@ -130,7 +130,7 @@ class Sep10:
     def sep10_failed_requests(self):
         return {"error": 'Invalide Url'}, 400
 
-class getTransferServerSEP24:
+class transferServerSEP24:
     def __init__(self, asset_code, asset_issuer, _horizon_url="https://horizon.stellar.org", _network=Network.PUBLIC_NETWORK_PASSPHRASE):
         self.asset_code = asset_code
         self.asset_issuer = asset_issuer
@@ -138,7 +138,7 @@ class getTransferServerSEP24:
         self.NETWORK_PASSPHRASE = _network
         self.server = Server(horizon_url=self.general_stellar_url)
 
-    def pullFromWeb(self):
+    def get(self):
       try:
         web_content = self.server.assets().for_code(asset_code=self.asset_code).for_issuer(asset_issuer=self.asset_issuer).call()
       except (BadResponseError, BadRequestError) as E:
