@@ -31,7 +31,7 @@ try:
     SECRET = sys.argv[1]
 except:
   SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
-  print("Running without key. Usage: python3 mm-yUSDC-USDC.py $secret")
+  print("\n\n***Running without key (argv[1])***\n\n")
 SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
@@ -75,7 +75,7 @@ def main():
           myAsk = Decimal(offers["price"])
           myAskID = int(offers['id'])
         elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"]) # Always buying in terms of selling
+          myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"])
           myBidID = int(offers['id'])
       except:
         continue
@@ -159,7 +159,8 @@ def main():
         submitUnbuiltTxnToStellar(transaction)
     except Exception:
       continue
-    time.sleep(10)
+    print("end")
+    time.sleep(12)
   main()
 
 def buildTxnEnv():
