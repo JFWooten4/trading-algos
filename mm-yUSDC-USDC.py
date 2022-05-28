@@ -159,7 +159,6 @@ def main():
         submitUnbuiltTxnToStellar(transaction)
     except Exception:
       continue
-    print("end")
     time.sleep(12)
   main()
 
