@@ -47,8 +47,8 @@ def main():
       requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
       data = requests.get(requestAddress).json()
       accountBalances = data["balances"]
-    except Exception:
-      pprint(data)
+    except KeyboardInterrupt:
+      print("Debug: Error in try block 1")
       continue
     for balances in accountBalances:
       try:
@@ -66,8 +66,8 @@ def main():
       requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
       data = requests.get(requestAddress).json()
       outstandingOffers = data["_embedded"]["records"]
-    except Exception:
-      pprint(data)
+    except KeyboardInterrupt:
+      print("Debug: Error in try block 3")
       continue
     for offers in outstandingOffers:
       try:
@@ -77,7 +77,8 @@ def main():
         elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
           myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"])
           myBidID = int(offers['id'])
-      except:
+      except KeyboardInterrupt:
+        print("Debug: Error in try block 4")
         continue
     try:
       requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
@@ -103,7 +104,7 @@ def main():
       tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
       meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
       meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
-      if(meaningfullyOutbid or tooHighBid or notBuyingAll):
+      if False:#(meaningfullyOutbid or tooHighBid or notBuyingAll):
         transaction = buildTxnEnv()
         if(not depositsFrozenFlag and buyersTooExcited):
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
@@ -124,40 +125,25 @@ def main():
         submitUnbuiltTxnToStellar(transaction)
       if(meaningfullyUndercut or tooLowAsk or notSellingAll):
         transaction = buildTxnEnv()
-        
-        
-        
-        
-        
-        tempDisable = True
-        if(not withdrawsFrozenFlag and sellersTooExcited and not tempDisable):
+        if(not withdrawsFrozenFlag and sellersTooExcited):
           frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
           if(frozen):
             withdrawsFrozenFlag = True
             continue
           print("Executed SEP24 sell")
-          
-          print(transaction.set_timeout(30).build().to_xdr())
-          return 2 #     WITHDRAWLS NOT TESTED YET -- DO NOT PUT INTO PRODUCTION
-          
-        
-        
-        
-        
-        
-        
         elif(not sellersTooExcited):
           ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
           transaction.append_manage_sell_offer_op(
             selling = yUSDC_ASSET,
             buying = USDC_ASSET,
-            amount = yUSDCtotal, #"{:.7f}".format(yUSDCtotal), #TODO: Works? 
+            amount = yUSDCtotal,
             price = ask,
             offer_id = myAskID,
           )
           print("Updated ask to {}".format(ask))
         submitUnbuiltTxnToStellar(transaction)
-    except Exception:
+    except KeyboardInterrupt:
+      print("Debug: Error in try block 5")
       continue
     time.sleep(12)
   main()
@@ -219,7 +205,6 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
 
 def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, token):
   ultrastellarServer = TRANSFER_SERVER + "/transactions/withdraw/interactive"
-  print(ultrastellarServer)
   auth = { "Authorization": "Bearer " + token, }
   info = {
     "asset_code": "yUSDC",
@@ -234,19 +219,20 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
     print("Attempted SEP24 withdraw: disabled")
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
-  amountField.send_keys(yUSDCtotal)
-  networkField = DRIVER.find_element(by=By.NAME, value="network")
-  networkField.send_keys("stellar")
-  print("Test: Sleeping: verify amount field")
-  time.sleep(100)
+  amountField.send_keys("{:.7f}".format(yUSDCtotal))
+  networkField = DRIVER.find_element(by=By.NAME, value="to_address")
+  networkField.send_keys(BT_TREASURY)
   DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
-  SEP24destination = DRIVER.find_element(by=By.NAME, value="usdc_deposit_wallet").get_attribute("value")
+  SEP24verifDepAddr = DRIVER.find_element(by=By.NAME, value="to_address").get_attribute("value")
+  assert(SEP24verifDepAddr == BT_TREASURY)
+  DRIVER.find_element(by=By.CLASS_NAME, value="mdc-button__label").click()
+  SEP24destination = DRIVER.find_element(by=By.NAME, value="usdc_withdraw_wallet").get_attribute("value")
   SEP24amount = DRIVER.find_element(by=By.NAME, value="amount_to_deposit").get_attribute("value")
-  SEP24memo = DRIVER.find_element(by=By.NAME, value="xlm_deposit_wallet").get_attribute("value")
+  SEP24memo = DRIVER.find_element(by=By.NAME, value="withdraw_memo").get_attribute("value")
   if(myAskID):
     transactionEnvelope.append_manage_sell_offer_op(
-      selling = USDC_ASSET,
-      buying = yUSDC_ASSET,
+      selling = yUSDC_ASSET,
+      buying = USDC_ASSET,
       amount = "0",
       price = "1",
       offer_id = myAskID,
