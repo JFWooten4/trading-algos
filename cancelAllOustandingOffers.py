@@ -45,9 +45,5 @@ def main():
     transaction = transaction.set_timeout(30).build()
     transaction.sign(signing_keypair)
     server.submit_transaction(transaction)
-    print("Debug: offerData arr is:")
-    pprint(offerData)
-    numRem = int(len(offerData + 1)/3))
-    print("-- {} --".format(len(offerData + 1)/3)) # no int 
-    print("Successfully cancelled {} offers".format(numRem)
+    print("Successfully cancelled {} offers".format(len(offerData)/3))
 main()
