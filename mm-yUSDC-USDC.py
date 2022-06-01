@@ -246,4 +246,12 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
   ).add_text_memo(SEP24memo)
   return 0
 
-main()
+def redundant():
+  while(True):
+    try:
+      main()
+    except Exception:
+      wait(120)
+      main()
+
+redundant()
