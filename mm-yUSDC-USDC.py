@@ -11,6 +11,8 @@ MIN_MEANINGFUL_SIZE = 420.69
 TXN_FEE_STROOPS = 4269
 MAX_BID = .99993
 MIN_OFFER = 1.00007
+MIN_BUY_SIDE_BID_SUPPORT = .995
+MIN_BUY_SIDE_BID_LIQ = 50000
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
@@ -87,9 +89,16 @@ def main():
       asksFromStellar = data["asks"]
       highestMeaningfulCompetingBid = MIN_BID
       lowestMeaningfulCompetingOffer = MAX_OFFER
+      buySideLiq = 0
       for bids in bidsFromStellar:
-        if(Decimal(bids["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(bids["price"]) > highestMeaningfulCompetingBid and highestMeaningfulCompetingBid != myBid):
-          highestMeaningfulCompetingBid = Decimal(bids["price"])
+        amount = Decimal(bids["amount"])
+        price = Decimal(bids["price"])
+        if(amount < MIN_MEANINGFUL_SIZE):
+          continue
+        if(price > highestMeaningfulCompetingBid and price != myBid):
+          highestMeaningfulCompetingBid = price
+        if(price > MIN_BUY_SIDE_BID_SUPPORT):
+          buySideLiq += amount
       for offers in asksFromStellar:
         if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
@@ -104,7 +113,9 @@ def main():
       tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
       meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
       meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
-      if(meaningfullyOutbid or tooHighBid or notBuyingAll):
+      timeToBuy = meaningfullyOutbid or tooHighBid or notBuyingAll
+      enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
+      if(timeToBuy and enoughBuyers):
         transaction = buildTxnEnv()
         if(not depositsFrozenFlag and buyersTooExcited):
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
