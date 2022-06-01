@@ -21,6 +21,7 @@ TRANSFER_SERVER = sep10.transferServerSEP24("yUSDC", yUSDC_ISSUER).get()
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 MIN_INCREMENT = Decimal(".0000001")
+SLEEP_TIME = 12
 MAX_OFFER = 99999
 MIN_BID = 0.0000001
 yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
@@ -38,7 +39,7 @@ SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
 def main():
-  myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = Decimal(0)
+  myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = lastTime = Decimal(0)
   myAsk = Decimal(100)
   depositsFrozenFlag = withdrawsFrozenFlag = False
   token = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET).run_auth()
@@ -118,6 +119,7 @@ def main():
       if(timeToBuy and enoughBuyers):
         transaction = buildTxnEnv()
         if(not depositsFrozenFlag and buyersTooExcited):
+          lastTime = preventSEP24collisions(lastTime)
           frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
           if(frozen):
             depositsFrozenFlag = True
@@ -138,6 +140,7 @@ def main():
       if(meaningfullyUndercut or tooLowAsk or notSellingAll):
         transaction = buildTxnEnv()
         if(not withdrawsFrozenFlag and sellersTooExcited):
+          lastTime = preventSEP24collisions(lastTime)
           frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
           if(frozen):
             withdrawsFrozenFlag = True
@@ -158,7 +161,7 @@ def main():
     except Exception:
       print("Debug: Error in try block 5")
       continue
-    time.sleep(12)
+    time.sleep(SLEEP_TIME)
   main()
 
 def buildTxnEnv():
@@ -177,6 +180,11 @@ def submitUnbuiltTxnToStellar(transaction):
     return SERVER.submit_transaction(transaction)
   except:
     return 0
+
+def preventSEP24collisions(lastTime):
+  if(lastTime > time.time() - 64):
+    time.sleep(64 - SLEEP_TIME)
+  return time.time()
 
 def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token):
   ultrastellarServer = TRANSFER_SERVER + "/transactions/deposit/interactive"
