@@ -7,7 +7,7 @@ from pprint import pprint
 import requests, json, time, sys, sep10
 
 ####### SET SPREAD, FEES, & SIZE #######
-MIN_MEANINGFUL_SIZE = 420.69
+MIN_MEANINGFUL_SIZE = 1000
 TXN_FEE_STROOPS = 4269
 MAX_BID = .99993
 MIN_OFFER = 1.00007
@@ -103,6 +103,7 @@ def main():
       for offers in asksFromStellar:
         if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
           lowestMeaningfulCompetingOffer = Decimal(offers["price"])
+      
       ####### BEGIN TRADING LOGIC #######
       USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
       yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
@@ -110,12 +111,15 @@ def main():
       notSellingAll = yUSDCavailable > MIN_MEANINGFUL_SIZE
       buyersTooExcited = highestMeaningfulCompetingBid >= MAX_BID
       sellersTooExcited = lowestMeaningfulCompetingOffer <= MIN_OFFER
+      matched = buyersTooExcited and sellersTooExcited
       tooHighBid = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
       tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
       meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
       meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
       timeToBuy = meaningfullyOutbid or tooHighBid or notBuyingAll
+      timeToSell = meaningfullyUndercut or tooLowAsk or notSellingAll
       enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
+      
       if(timeToBuy and enoughBuyers):
         transaction = buildTxnEnv()
         if(not depositsFrozenFlag and buyersTooExcited):
@@ -128,7 +132,8 @@ def main():
           print("Executed SEP24 buy")
         elif(not buyersTooExcited):
           bid = highestMeaningfulCompetingBid + MIN_INCREMENT
-          transaction.append_manage_sell_offer_op(
+          print(highestMeaningfulCompetingBid)
+          transaction.append_manage_buy_offer_op(
             selling = USDC_ASSET,
             buying = yUSDC_ASSET,
             amount = USDCtotal,
@@ -137,9 +142,10 @@ def main():
           )
           submitUnbuiltTxnToStellar(transaction)
           print("Updated bid to {}".format(bid))
-      if(meaningfullyUndercut or tooLowAsk or notSellingAll):
+      
+      if(timeToSell):
         transaction = buildTxnEnv()
-        if(not withdrawsFrozenFlag and sellersTooExcited):
+        if(not withdrawsFrozenFlag and sellersTooExcited and not matched):
           lastTime = preventSEP24collisions(lastTime)
           frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
           if(frozen):
@@ -158,6 +164,7 @@ def main():
           )
           submitUnbuiltTxnToStellar(transaction)
           print("Updated ask to {}".format(ask))
+    
     except Exception:
       print("Debug: Error in try block 5")
       continue
@@ -270,7 +277,7 @@ def redundant():
     try:
       main()
     except Exception:
-      wait(120)
+      time.sleep(120)
       main()
 
 redundant()
