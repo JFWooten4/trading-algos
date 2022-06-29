@@ -32,7 +32,7 @@ SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 try:
     SECRET = sys.argv[1]
-except:
+except Exception:
   SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
   print("\n\n***Running without key (argv[1])***\n\n")
 SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
@@ -45,14 +45,10 @@ def main():
   token = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET).run_auth()
   timeInAnHourToResetSEP24flagsPlusAuth = time.time() + 3600
   while(time.time() < timeInAnHourToResetSEP24flagsPlusAuth):
-    try:
-      myBidID = myAskID = 0
-      requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
-      data = requests.get(requestAddress).json()
-      accountBalances = data["balances"]
-    except Exception:
-      print("Debug: Error in try block 1")
-      continue
+    myBidID = myAskID = 0
+    requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
+    data = requests.get(requestAddress).json()
+    accountBalances = data["balances"]
     for balances in accountBalances:
       try:
         if(balances["asset_code"] == "USDC"):
@@ -63,111 +59,94 @@ def main():
           yUSDCsellOutstanding = Decimal(balances["selling_liabilities"])
           yUSDCtotal = Decimal(balances["balance"])
           yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
-      except:
-        continue
-    try:    
-      requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
-      data = requests.get(requestAddress).json()
-      outstandingOffers = data["_embedded"]["records"]
-    except Exception:
-      print("Debug: Error in try block 3")
-      continue
-    for offers in outstandingOffers:
-      try:
-        if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
-          myAsk = Decimal(offers["price"])
-          myAskID = int(offers['id'])
-        elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
-          myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"])
-          myBidID = int(offers['id'])
       except Exception:
-        print("Debug: Error in try block 4")
         continue
-    try:
-      requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
-      data = requests.get(requestAddress).json()
-      bidsFromStellar = data["bids"]
-      asksFromStellar = data["asks"]
-      highestMeaningfulCompetingBid = MIN_BID
-      lowestMeaningfulCompetingOffer = MAX_OFFER
-      buySideLiq = 0
-      for bids in bidsFromStellar:
-        amount = Decimal(bids["amount"])
-        price = Decimal(bids["price"])
-        if(amount < MIN_MEANINGFUL_SIZE):
+    requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
+    data = requests.get(requestAddress).json()
+    outstandingOffers = data["_embedded"]["records"]
+    for offers in outstandingOffers:
+      if(offers["selling"]["asset_code"] == "yUSDC" and offers["buying"]["asset_code"] == "USDC"):
+        myAsk = Decimal(offers["price"])
+        myAskID = int(offers['id'])
+      elif(offers["selling"]["asset_code"] == "USDC" and offers["buying"]["asset_code"] == "yUSDC"):
+        myBid = Decimal(offers["price_r"]["d"]) / Decimal(offers["price_r"]["n"])
+        myBidID = int(offers['id'])
+    requestAddress = "https://" + HORIZON_INST + "/order_book?selling_asset_type=credit_alphanum12&selling_asset_code=yUSDC&selling_asset_issuer=" + yUSDC_ISSUER + "&buying_asset_type=credit_alphanum4&buying_asset_code=USDC&buying_asset_issuer=" + USDC_ISSUER + "&limit=" + MAX_SEARCH    
+    data = requests.get(requestAddress).json()
+    bidsFromStellar = data["bids"]
+    asksFromStellar = data["asks"]
+    highestMeaningfulCompetingBid = MIN_BID
+    lowestMeaningfulCompetingOffer = MAX_OFFER
+    buySideLiq = 0
+    for bids in bidsFromStellar:
+      amount = Decimal(bids["amount"])
+      price = Decimal(bids["price"])
+      if(amount < MIN_MEANINGFUL_SIZE):
+        continue
+      if(price > highestMeaningfulCompetingBid and price != myBid):
+        highestMeaningfulCompetingBid = price
+      if(price > MIN_BUY_SIDE_BID_SUPPORT):
+        buySideLiq += amount
+    for offers in asksFromStellar:
+      if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
+        lowestMeaningfulCompetingOffer = Decimal(offers["price"])
+    ####### BEGIN TRADING LOGIC #######
+    USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
+    yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
+    notBuyingAll = USDCavailable > MIN_MEANINGFUL_SIZE
+    notSellingAll = yUSDCavailable > MIN_MEANINGFUL_SIZE
+    buyersTooExcited = highestMeaningfulCompetingBid >= MAX_BID
+    sellersTooExcited = lowestMeaningfulCompetingOffer <= MIN_OFFER
+    matched = buyersTooExcited and sellersTooExcited
+    tooHighBid = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
+    tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
+    meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
+    meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
+    timeToBuy = meaningfullyOutbid or tooHighBid or notBuyingAll
+    timeToSell = meaningfullyUndercut or tooLowAsk or notSellingAll
+    enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
+    if(timeToBuy and enoughBuyers):
+      transaction = buildTxnEnv()
+      if(not depositsFrozenFlag and buyersTooExcited):
+        lastTime = preventSEP24collisions(lastTime)
+        frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
+        if(frozen):
+          depositsFrozenFlag = True
           continue
-        if(price > highestMeaningfulCompetingBid and price != myBid):
-          highestMeaningfulCompetingBid = price
-        if(price > MIN_BUY_SIDE_BID_SUPPORT):
-          buySideLiq += amount
-      for offers in asksFromStellar:
-        if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
-          lowestMeaningfulCompetingOffer = Decimal(offers["price"])
-      
-      ####### BEGIN TRADING LOGIC #######
-      USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
-      yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
-      notBuyingAll = USDCavailable > MIN_MEANINGFUL_SIZE
-      notSellingAll = yUSDCavailable > MIN_MEANINGFUL_SIZE
-      buyersTooExcited = highestMeaningfulCompetingBid >= MAX_BID
-      sellersTooExcited = lowestMeaningfulCompetingOffer <= MIN_OFFER
-      matched = buyersTooExcited and sellersTooExcited
-      tooHighBid = highestMeaningfulCompetingBid < myBid - MIN_INCREMENT
-      tooLowAsk = lowestMeaningfulCompetingOffer > myAsk + MIN_INCREMENT
-      meaningfullyOutbid = highestMeaningfulCompetingBid > myBid and USDCmeaningful
-      meaningfullyUndercut = lowestMeaningfulCompetingOffer < myAsk and yUSDCmeaningful
-      timeToBuy = meaningfullyOutbid or tooHighBid or notBuyingAll
-      timeToSell = meaningfullyUndercut or tooLowAsk or notSellingAll
-      enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
-      
-      if(timeToBuy and enoughBuyers):
-        transaction = buildTxnEnv()
-        if(not depositsFrozenFlag and buyersTooExcited):
-          lastTime = preventSEP24collisions(lastTime)
-          frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
-          if(frozen):
-            depositsFrozenFlag = True
-            continue
-          submitUnbuiltTxnToStellar(transaction)
-          print("Executed SEP24 buy")
-        elif(not buyersTooExcited):
-          bid = highestMeaningfulCompetingBid + MIN_INCREMENT
-          print(highestMeaningfulCompetingBid)
-          transaction.append_manage_buy_offer_op(
-            selling = USDC_ASSET,
-            buying = yUSDC_ASSET,
-            amount = USDCtotal,
-            price = bid,
-            offer_id = myBidID,
-          )
-          submitUnbuiltTxnToStellar(transaction)
-          print("Updated bid to {}".format(bid))
-      
-      if(timeToSell):
-        transaction = buildTxnEnv()
-        if(not withdrawsFrozenFlag and sellersTooExcited and not matched):
-          lastTime = preventSEP24collisions(lastTime)
-          frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
-          if(frozen):
-            withdrawsFrozenFlag = True
-            continue
-          submitUnbuiltTxnToStellar(transaction)
-          print("Executed SEP24 sell")
-        elif(not sellersTooExcited):
-          ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
-          transaction.append_manage_sell_offer_op(
-            selling = yUSDC_ASSET,
-            buying = USDC_ASSET,
-            amount = yUSDCtotal,
-            price = ask,
-            offer_id = myAskID,
-          )
-          submitUnbuiltTxnToStellar(transaction)
-          print("Updated ask to {}".format(ask))
-    
-    except Exception:
-      print("Debug: Error in try block 5")
-      continue
+        submitUnbuiltTxnToStellar(transaction)
+        print("{}: Executed SEP24 buy".format(datetime.now()))
+      elif(not buyersTooExcited):
+        bid = highestMeaningfulCompetingBid + MIN_INCREMENT
+        transaction.append_manage_buy_offer_op(
+          selling = USDC_ASSET,
+          buying = yUSDC_ASSET,
+          amount = USDCtotal,
+          price = bid,
+          offer_id = myBidID,
+        )
+        submitUnbuiltTxnToStellar(transaction)
+        print("{}: Updated bid to {}".format(datetime.now(),bid))
+    if(timeToSell):
+      transaction = buildTxnEnv()
+      if(not withdrawsFrozenFlag and sellersTooExcited and not matched):
+        lastTime = preventSEP24collisions(lastTime)
+        frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
+        if(frozen):
+          withdrawsFrozenFlag = True
+          continue
+        submitUnbuiltTxnToStellar(transaction)
+        print("{}: Executed SEP24 sell".format(datetime.now()))
+      elif(not sellersTooExcited):
+        ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
+        transaction.append_manage_sell_offer_op(
+          selling = yUSDC_ASSET,
+          buying = USDC_ASSET,
+          amount = yUSDCtotal,
+          price = ask,
+          offer_id = myAskID,
+        )
+        submitUnbuiltTxnToStellar(transaction)
+        print("{}: Updated ask to {}".format(datetime.now(), ask))
     time.sleep(SLEEP_TIME)
   main()
 
@@ -184,8 +163,9 @@ def submitUnbuiltTxnToStellar(transaction):
   try:
     transaction = transaction.set_timeout(30).build()
     transaction.sign(SIGNING_KEYPAIR)
-    return SERVER.submit_transaction(transaction)
-  except:
+    SERVER.submit_transaction(transaction)
+    return time.sleep(SLEEP_TIME)
+  except Exception:
     return 0
 
 def preventSEP24collisions(lastTime):
@@ -205,8 +185,8 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
   response = requests.post(ultrastellarServer, headers=auth, data=info)
   try:
     DRIVER.get(response.json()["url"])
-  except:
-    print("Attempted SEP24 deposit: disabled [{}]".format(timeInAnHourToResetSEP24flagsPlusAuth))
+  except Exception:
+    print("{}: Attempted SEP24 deposit: disabled [{}]".format(datetime.now(), timeInAnHourToResetSEP24flagsPlusAuth))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(USDCtotal))
@@ -243,8 +223,8 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
   response = requests.post(ultrastellarServer, headers=auth, data=info)
   try:
     DRIVER.get(response.json()["url"])
-  except:
-    print("Attempted SEP24 withdraw: disabled [{}]".format(timeInAnHourToResetSEP24flagsPlusAuth))
+  except Exception:
+    print("{}: Attempted SEP24 withdraw: disabled [{}]".format(datetime.now(), timeInAnHourToResetSEP24flagsPlusAuth))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(yUSDCtotal))
