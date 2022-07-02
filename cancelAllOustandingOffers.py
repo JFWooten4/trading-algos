@@ -7,12 +7,12 @@ HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 TXN_FEE_STROOPS = 5000
 
+try:
+  SECRET = sys.argv[1]
+except:
+  print("Failed without key")
+
 def main():
-  try:
-    SECRET = sys.argv[1]
-  except:
-    print("Failed without key")
-    return -1
   offerData = []
   requestAddress = "https://" + HORIZON_INST + "/accounts/" + BT_TREASURY
   data = requests.get(requestAddress).json()
@@ -45,5 +45,6 @@ def main():
     transaction = transaction.set_timeout(30).build()
     transaction.sign(signing_keypair)
     server.submit_transaction(transaction)
-    print("Successfully cancelled {} offers".format(len(offerData)/3))
-main()
+    print("Successfully cancelled {} offers".format(int(len(offerData)/3)))
+  return 1
+
