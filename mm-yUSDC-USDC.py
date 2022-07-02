@@ -1,31 +1,37 @@
-from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
+from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder, LiquidityPoolAsset
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import selenium.webdriver as webdriver
+from datetime import datetime
 from decimal import Decimal
 from pprint import pprint
-import requests, json, time, sys, sep10
+import requests, json, time, sys, sep10, cancelAllOustandingOffers
 
 ####### SET SPREAD, FEES, & SIZE #######
-MIN_MEANINGFUL_SIZE = 1000
+MIN_MEANINGFUL_SIZE = 500
 TXN_FEE_STROOPS = 4269
 MAX_BID = .99993
 MIN_OFFER = 1.00007
 MIN_BUY_SIDE_BID_SUPPORT = .995
 MIN_BUY_SIDE_BID_LIQ = 50000
+MIN_LIQ_PRICE = ".999"
+MAX_LIQ_PRICE = "1.001"
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+LIQ_POOL_ID = "a92f55a5607db30047635970af435e4332ebbaff8a7fa70a9158c2fd6c1ecd2b"
 TRANSFER_SERVER = sep10.transferServerSEP24("yUSDC", yUSDC_ISSUER).get()
 HORIZON_INST = "horizon.stellar.org"
 MAX_SEARCH = "200"
 MIN_INCREMENT = Decimal(".0000001")
 SLEEP_TIME = 12
+LIQ_POOL_FEE = 30
 MAX_OFFER = 99999
 MIN_BID = 0.0000001
-yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
 USDC_ASSET = Asset("USDC", USDC_ISSUER)
+yUSDC_ASSET = Asset("yUSDC", yUSDC_ISSUER)
+LIQ_POOL_ASSET = LiquidityPoolAsset(USDC_ASSET, yUSDC_ASSET, fee=LIQ_POOL_FEE)
 PATH = Service(executable_path="/usr/bin/chromedriver")
 DRIVER = webdriver.Chrome(service = PATH)
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
@@ -39,7 +45,7 @@ SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
 def main():
-  myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = lastTime = Decimal(0)
+  myBid = USDCbuyOutstanding = USDCavailable = USDCtotal = yUSDCsellOutstanding = yUSDCavailable = yUSDCtotal = lastTime = liqPoolPos = Decimal(0)
   myAsk = Decimal(100)
   depositsFrozenFlag = withdrawsFrozenFlag = False
   token = sep10.Sep10("yUSDC", yUSDC_ISSUER, SECRET).run_auth()
@@ -60,7 +66,12 @@ def main():
           yUSDCtotal = Decimal(balances["balance"])
           yUSDCavailable = yUSDCtotal - yUSDCsellOutstanding
       except Exception:
-        continue
+        try:
+          if(balances["liquidity_pool_id"] == LIQ_POOL_ID):
+            liqPoolPos = Decimal(balances["balance"])
+        except Exception:
+          continue
+    dollarsTotal = USDCtotal + yUSDCtotal
     requestAddress = data["_links"]["offers"]["href"].replace("{?cursor,limit,order}", "?limit={}".format(MAX_SEARCH))
     data = requests.get(requestAddress).json()
     outstandingOffers = data["_embedded"]["records"]
@@ -81,9 +92,9 @@ def main():
     for bids in bidsFromStellar:
       amount = Decimal(bids["amount"])
       price = Decimal(bids["price"])
-      if(amount < MIN_MEANINGFUL_SIZE):
+      if(amount < MIN_MEANINGFUL_SIZE or price == myBid):
         continue
-      if(price > highestMeaningfulCompetingBid and price != myBid):
+      if(price > highestMeaningfulCompetingBid):
         highestMeaningfulCompetingBid = price
       if(price > MIN_BUY_SIDE_BID_SUPPORT):
         buySideLiq += amount
@@ -105,48 +116,86 @@ def main():
     timeToBuy = meaningfullyOutbid or tooHighBid or notBuyingAll
     timeToSell = meaningfullyUndercut or tooLowAsk or notSellingAll
     enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
-    if(timeToBuy and enoughBuyers):
-      transaction = buildTxnEnv()
-      if(not depositsFrozenFlag and buyersTooExcited):
-        lastTime = preventSEP24collisions(lastTime)
-        frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
-        if(frozen):
-          depositsFrozenFlag = True
-          continue
+    if(matched):
+      cancelAllOustandingOffers.main()
+      USDCtooMuch = USDCtotal > Decimal("1.2")*yUSDCtotal
+      yUSDCtooMuch = yUSDCtotal > Decimal("1.2")*USDCtotal
+      swapNeeded = USDCtooMuch or yUSDCtooMuch
+      sufficientSize = notBuyingAll and notSellingAll
+      if(swapNeeded and sufficientSize):
+        transaction = buildTxnEnv()
+        if(USDCtooMuch):
+          appendSEP24buyOpToTxnEnvelope(transaction, 0, USDCtotal/Decimal("2"), token)
+        else:
+          appendSEP24sellOpToTxnEnvelope(transaction, 0, yUSDCtotal/Decimal("2"), token)
         submitUnbuiltTxnToStellar(transaction)
-        print("{}: Executed SEP24 buy".format(datetime.now()))
-      elif(not buyersTooExcited):
-        bid = highestMeaningfulCompetingBid + MIN_INCREMENT
-        transaction.append_manage_buy_offer_op(
-          selling = USDC_ASSET,
-          buying = yUSDC_ASSET,
-          amount = USDCtotal,
-          price = bid,
-          offer_id = myBidID,
+        time.sleep(320)
+      elif(dollarsTotal > MIN_MEANINGFUL_SIZE):
+        transaction = buildTxnEnv()
+        transaction.append_liquidity_pool_deposit_op(
+          liquidity_pool_id = LIQ_POOL_ID,
+          max_amount_a = USDCtotal,
+          max_amount_b = yUSDCtotal,
+          min_price = MIN_LIQ_PRICE,
+          max_price = MAX_LIQ_PRICE,
         )
         submitUnbuiltTxnToStellar(transaction)
-        print("{}: Updated bid to {}".format(datetime.now(),bid))
-    if(timeToSell):
-      transaction = buildTxnEnv()
-      if(not withdrawsFrozenFlag and sellersTooExcited and not matched):
-        lastTime = preventSEP24collisions(lastTime)
-        frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
-        if(frozen):
-          withdrawsFrozenFlag = True
-          continue
-        submitUnbuiltTxnToStellar(transaction)
-        print("{}: Executed SEP24 sell".format(datetime.now()))
-      elif(not sellersTooExcited):
-        ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
-        transaction.append_manage_sell_offer_op(
-          selling = yUSDC_ASSET,
-          buying = USDC_ASSET,
-          amount = yUSDCtotal,
-          price = ask,
-          offer_id = myAskID,
+        print("{} @ {}: Executed deposit to liquidity pool".format(datetime.now(), dollarsTotal))
+    else:
+      if(liqPoolPos):
+        transaction = buildTxnEnv()
+        transaction.append_liquidity_pool_withdraw_op(
+          liquidity_pool_id = LIQ_POOL_ID,
+          amount = liqPoolPos,
+          min_amount_a = liqPoolPos,
+          min_amount_b = liqPoolPos,
         )
         submitUnbuiltTxnToStellar(transaction)
-        print("{}: Updated ask to {}".format(datetime.now(), ask))
+        print("{} @ Nil: Executed withdraw from liquidity pool".format(datetime.now()))
+        time.sleep(SLEEP_TIME)
+        continue
+      if(timeToBuy and enoughBuyers):
+        transaction = buildTxnEnv()
+        if(not depositsFrozenFlag and buyersTooExcited):
+          lastTime = preventSEP24collisions(lastTime)
+          frozen = appendSEP24buyOpToTxnEnvelope(transaction, myBidID, USDCtotal, token)
+          if(frozen):
+            depositsFrozenFlag = True
+            continue
+          submitUnbuiltTxnToStellar(transaction)
+          print("{} @ {}: Executed SEP24 buy".format(datetime.now(), dollarsTotal))
+        elif(not buyersTooExcited):
+          bid = highestMeaningfulCompetingBid + MIN_INCREMENT
+          transaction.append_manage_buy_offer_op(
+            selling = USDC_ASSET,
+            buying = yUSDC_ASSET,
+            amount = USDCtotal,
+            price = bid,
+            offer_id = myBidID,
+          )
+          submitUnbuiltTxnToStellar(transaction)
+          print("{} @ {}: Updated bid to {}".format(datetime.now(), dollarsTotal, bid))
+      if(timeToSell):
+        transaction = buildTxnEnv()
+        if(not withdrawsFrozenFlag and sellersTooExcited):
+          lastTime = preventSEP24collisions(lastTime)
+          frozen = appendSEP24sellOpToTxnEnvelope(transaction, myAskID, yUSDCtotal, token)
+          if(frozen):
+            withdrawsFrozenFlag = True
+            continue
+          submitUnbuiltTxnToStellar(transaction)
+          print("{} @ {}: Executed SEP24 sell".format(datetime.now(), dollarsTotal))
+        elif(not sellersTooExcited):
+          ask = lowestMeaningfulCompetingOffer - MIN_INCREMENT
+          transaction.append_manage_sell_offer_op(
+            selling = yUSDC_ASSET,
+            buying = USDC_ASSET,
+            amount = yUSDCtotal,
+            price = ask,
+            offer_id = myAskID,
+          )
+          submitUnbuiltTxnToStellar(transaction)
+          print("{} @ {}: Updated ask to {}".format(datetime.now(), dollarsTotal, ask))
     time.sleep(SLEEP_TIME)
   main()
 
@@ -186,7 +235,7 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
   try:
     DRIVER.get(response.json()["url"])
   except Exception:
-    print("{}: Attempted SEP24 deposit: disabled [{}]".format(datetime.now(), timeInAnHourToResetSEP24flagsPlusAuth))
+    print("{}: Attempted SEP24 deposit: disabled [{}]".format(datetime.now()))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(USDCtotal))
@@ -224,7 +273,7 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
   try:
     DRIVER.get(response.json()["url"])
   except Exception:
-    print("{}: Attempted SEP24 withdraw: disabled [{}]".format(datetime.now(), timeInAnHourToResetSEP24flagsPlusAuth))
+    print("{}: Attempted SEP24 withdraw: disabled [{}]".format(datetime.now()))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(yUSDCtotal))
