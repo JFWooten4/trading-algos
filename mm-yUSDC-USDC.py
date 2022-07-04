@@ -42,7 +42,7 @@ except Exception:
   print("\n\n***Running without key (argv[1])***\n\n")
 SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
 LOCAL_SECRET = "BJBSVYWFUMHTG7QSPIZPFJKYPR7T"
-LOCAL_SERVER = Keypair.from_secret(yUSDC_USDC_MM_1_OF_2 + LOCAL_SECRET)
+LOCAL_SERVER = Keypair.from_secret(localKeys.get_yUSDC_USDC_MM_1_OF_2() + LOCAL_SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
 def main():
