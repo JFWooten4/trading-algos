@@ -1,6 +1,6 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
 from pprint import pprint
-import requests, json, sys
+import requests, json, sys, time
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 HORIZON_INST = "horizon.stellar.org"
@@ -45,6 +45,8 @@ def main():
     transaction = transaction.set_timeout(30).build()
     transaction.sign(signing_keypair)
     server.submit_transaction(transaction)
-    print("Successfully cancelled {} offers".format(int(len(offerData)/3)))
+    time.sleep(10)
+    numOff = int(len(offerData)/3)
+    print("Successfully cancelled {} offer{}".format(numOff, "s" if numOff > 1 else ""))
   return 1
 
