@@ -5,8 +5,7 @@ import selenium.webdriver as webdriver
 from datetime import datetime
 from decimal import Decimal
 from pprint import pprint
-import requests, json, time, sys, sep10, cancelAllOustandingOffers
-
+import localKeys, requests, json, time, sys, sep10, cancelAllOustandingOffers
 ####### SET SPREAD, FEES, & SIZE #######
 MIN_MEANINGFUL_SIZE = 500
 TXN_FEE_STROOPS = 4269
@@ -37,11 +36,13 @@ DRIVER = webdriver.Chrome(service = PATH)
 SERVER = Server(horizon_url = "https://" + HORIZON_INST)
 TREASURY_ACCOUNT = SERVER.load_account(account_id = BT_TREASURY)
 try:
-    SECRET = sys.argv[1]
+  SECRET = sys.argv[1]
 except Exception:
   SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
   print("\n\n***Running without key (argv[1])***\n\n")
 SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
+LOCAL_SECRET = "BJBSVYWFUMHTG7QSPIZPFJKYPR7T"
+LOCAL_SERVER = Keypair.from_secret(yUSDC_USDC_MM_1_OF_2 + LOCAL_SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
 def main():
@@ -86,21 +87,22 @@ def main():
     data = requests.get(requestAddress).json()
     bidsFromStellar = data["bids"]
     asksFromStellar = data["asks"]
-    highestMeaningfulCompetingBid = MIN_BID
-    lowestMeaningfulCompetingOffer = MAX_OFFER
-    buySideLiq = 0
+    buySideLiq = bidDepthFromBuySideTop = highestMeaningfulCompetingBid = 0
     for bids in bidsFromStellar:
       amount = Decimal(bids["amount"])
       price = Decimal(bids["price"])
-      if(amount < MIN_MEANINGFUL_SIZE or price == myBid):
-        continue
-      if(price > highestMeaningfulCompetingBid):
-        highestMeaningfulCompetingBid = price
+      if(price != myBid and not highestMeaningfulCompetingBid):
+        bidDepthFromBuySideTop += amount
+        if(bidDepthFromBuySideTop >= MIN_MEANINGFUL_SIZE):
+          highestMeaningfulCompetingBid = price
       if(price > MIN_BUY_SIDE_BID_SUPPORT):
         buySideLiq += amount
+    lowestMeaningfulCompetingOffer = MAX_OFFER
     for offers in asksFromStellar:
-      if(Decimal(offers["amount"]) > MIN_MEANINGFUL_SIZE and Decimal(offers["price"]) < lowestMeaningfulCompetingOffer and Decimal(offers["price"]) != myAsk):
-        lowestMeaningfulCompetingOffer = Decimal(offers["price"])
+      amount = Decimal(offers["amount"])
+      price = Decimal(offers["price"])
+      if(amount >= MIN_MEANINGFUL_SIZE and price < lowestMeaningfulCompetingOffer and price != myAsk):
+        lowestMeaningfulCompetingOffer = price
     ####### BEGIN TRADING LOGIC #######
     USDCmeaningful = USDCtotal > MIN_MEANINGFUL_SIZE
     yUSDCmeaningful = yUSDCtotal > MIN_MEANINGFUL_SIZE
@@ -151,7 +153,10 @@ def main():
           min_amount_b = liqPoolPos,
         )
         submitUnbuiltTxnToStellar(transaction)
-        print("{} @ Nil: Executed withdraw from liquidity pool".format(datetime.now()))
+        if(submitUnbuiltTxnToStellar(transaction)):
+          print("{} @ Nil: Executed withdraw from liquidity pool".format(datetime.now()))
+        else:
+          print("Debug: {}".format(transaction))
         time.sleep(SLEEP_TIME)
         continue
       if(timeToBuy and enoughBuyers):
@@ -211,7 +216,7 @@ def buildTxnEnv():
 def submitUnbuiltTxnToStellar(transaction):
   try:
     transaction = transaction.set_timeout(30).build()
-    transaction.sign(SIGNING_KEYPAIR)
+    transaction.sign(SIGNING_KEYPAIR).sign(LOCAL_SERVER)
     SERVER.submit_transaction(transaction)
     return time.sleep(SLEEP_TIME)
   except Exception:
@@ -235,7 +240,7 @@ def appendSEP24buyOpToTxnEnvelope(transactionEnvelope, myBidID, USDCtotal, token
   try:
     DRIVER.get(response.json()["url"])
   except Exception:
-    print("{}: Attempted SEP24 deposit: disabled [{}]".format(datetime.now()))
+    print("{}: Attempted SEP24 deposit: disabled".format(datetime.now()))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(USDCtotal))
@@ -273,7 +278,7 @@ def appendSEP24sellOpToTxnEnvelope(transactionEnvelope, myAskID, yUSDCtotal, tok
   try:
     DRIVER.get(response.json()["url"])
   except Exception:
-    print("{}: Attempted SEP24 withdraw: disabled [{}]".format(datetime.now()))
+    print("{}: Attempted SEP24 withdraw: disabled".format(datetime.now()))
     return 1
   amountField = DRIVER.find_element(by=By.NAME, value="amount")
   amountField.send_keys(int(yUSDCtotal))
