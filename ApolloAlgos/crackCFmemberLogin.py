@@ -2,29 +2,36 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import selenium.webdriver as webdriver
+from threading import Thread
 from pprint import pprint
 import time, os, binascii
 
 PATH = Service(executable_path="/usr/bin/chromedriver")
-DRIVER = webdriver.Chrome(service = PATH)
+#DRIVER = webdriver.Chrome(service = PATH)
 
 denom = 16**11
-tries = 0
 
-while(True):
-  tail = str(binascii.b2a_hex(os.urandom(15)))[2:13]
-  base = "https://www.taxsaleinvesting.com/membership-access-page/"
-  addr = base + tail
-  DRIVER.get(addr)
-  try:
-    DRIVER.find_element(by=By.PARTIAL_LINK_TEXT, value="Login Now!")
-    print(addr)
-    break
-  except Exception:
-    tries += 1
-    if(not tries % 100):
-      print(100 * 3 * tries / denom)
-    continue
+def func():
+  DRIVER = webdriver.Chrome(service = PATH)
+  tries = 0
+  while(True):
+    tail = str(binascii.b2a_hex(os.urandom(15)))[2:13]
+    base = "https://www.taxsaleinvesting.com/membership-access-page/"
+    addr = base + tail
+    DRIVER.get(addr)
+    try:
+      DRIVER.find_element(by=By.PARTIAL_LINK_TEXT, value="Login Now!")
+      print(addr)
+      break
+    except Exception:
+      tries += 1
+      if(not tries % 100):
+        print("-----------------------100-----------------------")
+      continue
+
+for _ in range(8):
+    t = Thread(target=func)
+    t.start()
 
 
 # https://www.taxsaleinvesting.com/membership-access-page/abcdef01234
