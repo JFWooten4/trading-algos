@@ -5,7 +5,7 @@ import selenium.webdriver as webdriver
 from datetime import datetime
 from decimal import Decimal
 from pprint import pprint
-import localKeys, requests, json, time, sys, sep10, cancelAllOustandingOffers
+import localKeys, requests, json, time, sys, sep10
 ####### SET SPREAD, FEES, & SIZE #######
 MIN_MEANINGFUL_SIZE = 500
 TXN_FEE_STROOPS = 4269
@@ -16,8 +16,8 @@ MIN_BUY_SIDE_BID_LIQ = 50000
 MIN_LIQ_PRICE = ".999"
 MAX_LIQ_PRICE = "1.001"
 
-BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
-yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF"
+BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY" # Change to you
+yUSDC_ISSUER = "GDGTVWSM4MGS4T7Z6W4RPWOCHE2I6RDFCIFZGS3DOA63LWQTRNZNTTFF" # Change to contra
 USDC_ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
 LIQ_POOL_ID = "a92f55a5607db30047635970af435e4332ebbaff8a7fa70a9158c2fd6c1ecd2b"
 TRANSFER_SERVER = sep10.transferServerSEP24("yUSDC", yUSDC_ISSUER).get()
@@ -41,7 +41,7 @@ except Exception:
   SECRET = "SBTPLXTXJDMJOXFPYU2ANLZI2ARDPHFKPKK4MJFYVZVBLXYM5AIP3LPK"
   print("\n\n***Running without key (argv[1])***\n\n")
 SIGNING_KEYPAIR = Keypair.from_secret(SECRET)
-LOCAL_SECRET = "BJBSVYWFUMHTG7QSPIZPFJKYPR7T"
+LOCAL_SECRET = "BJBSVYWFUMHTG7QSPIZPFJKYPR7T" # exposed, replace (both)
 LOCAL_SERVER = Keypair.from_secret(localKeys.get_yUSDC_USDC_MM_1_OF_2() + LOCAL_SECRET)
 print("Starting yUSDC-USDC market making algorithm from {:.1f}bps spread".format(10000*(MIN_OFFER-MAX_BID)))
 
@@ -119,7 +119,7 @@ def main():
     timeToSell = meaningfullyUndercut or tooLowAsk or notSellingAll
     enoughBuyers = buySideLiq > MIN_BUY_SIDE_BID_LIQ
     if(matched):
-      cancelAllOustandingOffers.main()
+      cancelAllOustandingOffers()
       USDCtooMuch = USDCtotal > Decimal("1.2")*yUSDCtotal
       yUSDCtooMuch = yUSDCtotal > Decimal("1.2")*USDCtotal
       swapNeeded = USDCtooMuch or yUSDCtooMuch
