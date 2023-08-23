@@ -1,6 +1,6 @@
 from stellar_sdk import Asset, Keypair, Network, Server, TransactionBuilder
-from pprint import pprint
 import requests, json, sys, time
+from pprint import pprint
 
 BT_TREASURY = "GD2OUJ4QKAPESM2NVGREBZTLFJYMLPCGSUHZVRMTQMF5T34UODVHPRCY"
 HORIZON_INST = "horizon.stellar.org"
